@@ -2,9 +2,15 @@
 
 You need Immich already running with Docker Compose. That's it.
 
-## 1. Copy the folder
+## 1. Download Folio
 
-Put the `folio` folder in the same place as your Immich `docker-compose.yml`:
+In the folder that has your Immich `docker-compose.yml`, run:
+
+```bash
+git clone https://github.com/Rtx-9/folio-for-immich folio
+```
+
+(No git? Download the ZIP from the GitHub page, unzip it and rename the folder to `folio`.) You should end up with:
 
 ```
 immich-app/
@@ -62,6 +68,6 @@ photos.example.com {
 | No **Pages** in the sidebar | Go to `/folio` directly, e.g. `http://your-server:2284/folio` |
 | "Folio could not reach Immich" | Check that `IMMICH_URL` matches your Immich container name (usually `immich-server`) |
 | Can't add an album | You can only add albums you own |
-| Want to update Folio | Replace the `folio` folder, then run `docker compose up -d --build` again |
+| Want to update Folio | Run `git -C folio pull`, then `docker compose up -d --build` again |
 
 Your pages are saved in the `folio-data` folder. Back it up with the rest of Immich.
