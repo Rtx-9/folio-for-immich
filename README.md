@@ -1,3 +1,5 @@
+NOTICE: This sloptastic project takes direct ideas from wispdevons (or dev idk what ur github is as it doesnt work) "ImmichPager" project (this too idk where to find a link to so ye) thanks dev for the idea and thanks claude for stealing it
+
 # Folio for Immich
 
 Share a **themed page** instead of a plain Immich link. Pick albums, choose a look,
