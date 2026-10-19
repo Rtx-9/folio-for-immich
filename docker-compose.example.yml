@@ -1,0 +1,20 @@
+# Add this service to the docker-compose.yml you already use for Immich
+# (put the folio/ folder next to it). Then point your domain / reverse proxy
+# at folio:2284 instead of immich-server:2283 — Folio forwards everything
+# else to Immich untouched.
+
+services:
+  folio:
+    container_name: immich_folio
+    build: ./folio
+    environment:
+      IMMICH_URL: http://immich-server:2283
+      # Optional: the public address, used for link previews (WhatsApp, iMessage…)
+      # PUBLIC_URL: https://photos.example.com
+    volumes:
+      - ./folio-data:/data
+    ports:
+      - '2284:2284'
+    depends_on:
+      - immich-server
+    restart: always
