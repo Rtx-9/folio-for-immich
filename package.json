@@ -1,6 +1,6 @@
 {
   "name": "folio-for-immich",
-  "version": "1.0.0",
+  "version": "2.0.1",
   "description": "Themed, shareable client pages for your Immich albums.",
   "type": "module",
   "license": "GPL-3.0-or-later",

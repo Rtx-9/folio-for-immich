@@ -12,7 +12,8 @@ import {
   unlockCookieName,
   unlockToken,
 } from './auth.js';
-import { config } from './config.js';
+import fs from 'node:fs';
+import { config, version } from './config.js';
 import {
   cookie,
   HttpError,
@@ -236,13 +237,19 @@ const editorView = (page) => ({
 const templateInfo = () =>
   TEMPLATES.map((t) => ({ id: t.id, name: t.name, blurb: t.blurb, preset: t.preset, hero: t.hero, blocks: t.blocks().map((b) => b.type) }));
 
+// The editor page, with asset URLs pinned to this version so browsers never mix old and new files.
+let editorCache;
+const editorHtml = () =>
+  (editorCache ??= fs.readFileSync(path.join(STATIC, 'editor.html'), 'utf8').replaceAll('__VERSION__', encodeURIComponent(version)));
+
 async function editorApi(req, res, url) {
+  res.setHeader('x-folio-version', version);
   const p = url.pathname.slice('/_folio/api'.length);
   const method = req.method;
   let m;
 
   if (p === '/meta') {
-    return sendJson(res, 200, { presets: PRESETS, fonts: FONTS, options: OPTIONS, templates: templateInfo(), immichUrl: config.proxy ? '/' : null });
+    return sendJson(res, 200, { version, presets: PRESETS, fonts: FONTS, options: OPTIONS, templates: templateInfo(), immichUrl: config.proxy ? '/' : null });
   }
 
   // Custom header requirement blocks cross-site form posts (CSRF).
@@ -441,7 +448,7 @@ async function handle(req, res) {
   const url = new URL(req.url, 'http://folio.local');
   const p = url.pathname;
 
-  if (p === '/folio' || p.startsWith('/folio/')) return serveFile(req, res, path.join(STATIC, 'editor.html'));
+  if (p === '/folio' || p.startsWith('/folio/')) return sendHtml(res, 200, editorHtml());
   if (p === '/_folio/inject.js') return serveFile(req, res, path.join(STATIC, 'inject.js'));
   if (p.startsWith('/_folio/static/')) {
     const file = path.join(STATIC, path.normalize(p.slice('/_folio/static/'.length)).replace(/^(\.\.[/\\])+/, ''));

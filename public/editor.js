@@ -89,6 +89,20 @@ const svgEl = (markup) => {
 
 const newId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
+// The version this script was loaded as (editor.js?v=…). If the server reports a
+// different one, Folio was updated while this tab was open: reload to get the new editor.
+const CLIENT_VERSION = new URL(import.meta.url).searchParams.get('v');
+function checkVersion(res) {
+  const server = res.headers.get('x-folio-version');
+  if (!server || !CLIENT_VERSION || server === CLIENT_VERSION) return;
+  try {
+    if (sessionStorage.getItem('folio-reloaded-for') === server) return; // never loop
+    sessionStorage.setItem('folio-reloaded-for', server);
+  } catch {}
+  location.reload();
+  throw Object.assign(new Error('Folio was updated — reloading…'), { status: 409 });
+}
+
 async function api(path, { method = 'GET', body, raw, headers = {} } = {}) {
   const res = await fetch(`/_folio/api${path}`, {
     method,
@@ -96,6 +110,7 @@ async function api(path, { method = 'GET', body, raw, headers = {} } = {}) {
     headers: { 'x-folio': '1', ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...headers },
     body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined),
   });
+  checkVersion(res);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || `Request failed (${res.status})`);
@@ -266,7 +281,7 @@ async function route() {
     if (m) await openEditor(m[1]);
     else await showList();
   } catch (err) {
-    if (err.status === 401) return;
+    if (err.status === 401 || err.status === 409) return;
     if (err.status === 404 && m) {
       toast('That page no longer exists', { error: true });
       history.replaceState({}, '', '/folio');

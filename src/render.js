@@ -1,4 +1,5 @@
 // Server-side rendering of public pages (and the editor's live preview).
+import { version } from './config.js';
 import { esc, safeJson } from './http.js';
 import { FONTS, fontStack, googleFontsHref, mix, readableOn } from './themes.js';
 
@@ -109,7 +110,7 @@ ${description ? `<meta property="og:description" content="${esc(description)}">`
 ${url ? `<meta property="og:url" content="${esc(url)}">` : ''}
 ${image ? `<meta property="og:image" content="${esc(image)}"><meta name="twitter:card" content="summary_large_image">` : ''}
 ${fonts ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${esc(fonts)}">` : ''}
-<link rel="stylesheet" href="/_folio/static/page.css">
+<link rel="stylesheet" href="/_folio/static/page.css?v=${version}">
 <style>${themeVars(cfg)}</style>
 </head>`;
 }
@@ -370,7 +371,7 @@ function footer(cfg) {
 
 function clientConfig({ base, allowDownload, cfg, preview, edit }) {
   return `<script>window.FOLIO=${safeJson({ base, allowDownload, gallery: cfg.gallery, preview: Boolean(preview), edit: Boolean(edit), hero: cfg.hero })}</script>
-<script src="/_folio/static/page.js" defer></script>`;
+<script src="/_folio/static/page.js?v=${version}" defer></script>`;
 }
 
 // ---- full documents ---------------------------------------------------------------

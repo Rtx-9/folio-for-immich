@@ -1,7 +1,11 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// Used to cache-bust the browser files and to tell open editors to reload after an update.
+export const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 
 const bool = (value, fallback) => (value === undefined || value === '' ? fallback : !/^(0|false|no|off)$/i.test(value));
 
