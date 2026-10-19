@@ -12,7 +12,18 @@ let db;
 let timer;
 
 export function load() {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    fs.accessSync(config.dataDir, fs.constants.W_OK);
+  } catch (err) {
+    if (err.code !== 'EACCES' && err.code !== 'EPERM') throw err;
+    const uid = typeof process.getuid === 'function' ? process.getuid() : '?';
+    console.error(
+      `Folio can't write to its data folder (${config.dataDir}).\n` +
+        `Give it to user ${uid}, e.g. on the host: sudo chown -R ${uid}:${uid} ./folio-data`,
+    );
+    process.exit(1);
+  }
   try {
     db = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (err) {
