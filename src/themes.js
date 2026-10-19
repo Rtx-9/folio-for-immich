@@ -1,6 +1,8 @@
-// Theme presets, fonts, the page config schema and its sanitizer.
+// Theme presets, fonts, templates, the page config schema and its sanitizer.
+import crypto from 'node:crypto';
 
 export const FONTS = {
+  // sans
   Inter: { category: 'sans', weights: '400;500;600;700' },
   'Inter Tight': { category: 'sans', weights: '400;500;600;700' },
   'DM Sans': { category: 'sans', weights: '400;500;700' },
@@ -9,79 +11,65 @@ export const FONTS = {
   Karla: { category: 'sans', weights: '400;500;700' },
   'Space Grotesk': { category: 'sans', weights: '400;500;700' },
   Outfit: { category: 'sans', weights: '400;500;600;700' },
+  Poppins: { category: 'sans', weights: '400;500;600;700' },
+  Montserrat: { category: 'sans', weights: '400;600;800' },
+  Raleway: { category: 'sans', weights: '400;600;800' },
+  'Josefin Sans': { category: 'sans', weights: '400;600;700' },
+  Sora: { category: 'sans', weights: '400;600;700' },
   Archivo: { category: 'sans', weights: '400;600;800' },
-  Syne: { category: 'sans', weights: '400;600;800' },
-  'Bricolage Grotesque': { category: 'sans', weights: '400;600;800' },
+  // display
+  Syne: { category: 'display', weights: '400;600;800' },
+  'Bricolage Grotesque': { category: 'display', weights: '400;600;800' },
+  Unbounded: { category: 'display', weights: '400;600;800' },
+  'Abril Fatface': { category: 'display', weights: '400' },
+  Italiana: { category: 'display', weights: '400' },
+  Gloock: { category: 'display', weights: '400' },
+  // serif
   Fraunces: { category: 'serif', weights: '400;600' },
   'Playfair Display': { category: 'serif', weights: '400;600;700' },
   'DM Serif Display': { category: 'serif', weights: '400' },
   'Cormorant Garamond': { category: 'serif', weights: '400;500;600' },
   'Instrument Serif': { category: 'serif', weights: '400' },
   'Libre Baskerville': { category: 'serif', weights: '400;700' },
+  Lora: { category: 'serif', weights: '400;600' },
+  'EB Garamond': { category: 'serif', weights: '400;600' },
+  'Bodoni Moda': { category: 'serif', weights: '400;600;700' },
+  'Young Serif': { category: 'serif', weights: '400' },
+  Marcellus: { category: 'serif', weights: '400' },
+  // handwriting & mono
+  'Dancing Script': { category: 'script', weights: '400;600' },
+  Caveat: { category: 'script', weights: '400;600' },
+  'Space Mono': { category: 'mono', weights: '400;700' },
+  // no download
   'System sans': { category: 'sans', system: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
   'System serif': { category: 'serif', system: 'ui-serif, Georgia, "Times New Roman", serif' },
 };
 
+const theme = (bg, text, accent, heading, body, headingCase, headingWeight, radius) => ({ bg, text, accent, heading, body, headingCase, headingWeight, radius });
+
 export const PRESETS = [
-  {
-    id: 'atelier',
-    name: 'Atelier',
-    blurb: 'Warm paper, editorial serif',
-    theme: { bg: '#f7f5f0', text: '#1c1a17', accent: '#1c1a17', heading: 'Fraunces', body: 'Inter', headingCase: 'normal', headingWeight: 'regular', radius: 4 },
-  },
-  {
-    id: 'midnight',
-    name: 'Midnight',
-    blurb: 'Deep ink, soft blue',
-    theme: { bg: '#0c0e13', text: '#e9eaee', accent: '#9db8ff', heading: 'Inter Tight', body: 'Inter', headingCase: 'normal', headingWeight: 'bold', radius: 14 },
-  },
-  {
-    id: 'darkroom',
-    name: 'Darkroom',
-    blurb: 'Warm black, amber light',
-    theme: { bg: '#15110e', text: '#f1e7da', accent: '#e3a857', heading: 'DM Serif Display', body: 'DM Sans', headingCase: 'normal', headingWeight: 'regular', radius: 2 },
-  },
-  {
-    id: 'linen',
-    name: 'Linen',
-    blurb: 'Weddings, classic and calm',
-    theme: { bg: '#f2ece3', text: '#2e2823', accent: '#a0603f', heading: 'Cormorant Garamond', body: 'Karla', headingCase: 'normal', headingWeight: 'regular', radius: 0 },
-  },
-  {
-    id: 'fern',
-    name: 'Fern',
-    blurb: 'Sage greens, outdoors',
-    theme: { bg: '#edf0e8', text: '#1d2a20', accent: '#3f6f4e', heading: 'Playfair Display', body: 'Work Sans', headingCase: 'normal', headingWeight: 'regular', radius: 10 },
-  },
-  {
-    id: 'afterglow',
-    name: 'Afterglow',
-    blurb: 'Night-out purple and pink',
-    theme: { bg: '#170b24', text: '#f5ecff', accent: '#ff6fae', heading: 'Syne', body: 'Space Grotesk', headingCase: 'normal', headingWeight: 'bold', radius: 18 },
-  },
-  {
-    id: 'poster',
-    name: 'Poster',
-    blurb: 'Stark white, loud orange',
-    theme: { bg: '#ffffff', text: '#0a0a0a', accent: '#ff4d00', heading: 'Archivo', body: 'Archivo', headingCase: 'upper', headingWeight: 'bold', radius: 0 },
-  },
-  {
-    id: 'tide',
-    name: 'Tide',
-    blurb: 'Ocean teal on navy',
-    theme: { bg: '#0e1c24', text: '#e2f0f3', accent: '#63d2c6', heading: 'Outfit', body: 'Outfit', headingCase: 'normal', headingWeight: 'bold', radius: 12 },
-  },
-  {
-    id: 'blush',
-    name: 'Blush',
-    blurb: 'Soft rose, modern serif',
-    theme: { bg: '#fbf1ef', text: '#3b2a2a', accent: '#c76b72', heading: 'Instrument Serif', body: 'Manrope', headingCase: 'normal', headingWeight: 'regular', radius: 20 },
-  },
+  { id: 'atelier', name: 'Atelier', blurb: 'Warm paper, editorial serif', theme: theme('#f7f5f0', '#1c1a17', '#1c1a17', 'Fraunces', 'Inter', 'normal', 'regular', 4) },
+  { id: 'midnight', name: 'Midnight', blurb: 'Deep ink, soft blue', theme: theme('#0c0e13', '#e9eaee', '#9db8ff', 'Inter Tight', 'Inter', 'normal', 'bold', 14) },
+  { id: 'darkroom', name: 'Darkroom', blurb: 'Warm black, amber light', theme: theme('#15110e', '#f1e7da', '#e3a857', 'DM Serif Display', 'DM Sans', 'normal', 'regular', 2) },
+  { id: 'linen', name: 'Linen', blurb: 'Weddings, classic and calm', theme: theme('#f2ece3', '#2e2823', '#a0603f', 'Cormorant Garamond', 'Karla', 'normal', 'regular', 0) },
+  { id: 'fern', name: 'Fern', blurb: 'Sage greens, outdoors', theme: theme('#edf0e8', '#1d2a20', '#3f6f4e', 'Playfair Display', 'Work Sans', 'normal', 'regular', 10) },
+  { id: 'afterglow', name: 'Afterglow', blurb: 'Night-out purple and pink', theme: theme('#170b24', '#f5ecff', '#ff6fae', 'Syne', 'Space Grotesk', 'normal', 'bold', 18) },
+  { id: 'poster', name: 'Poster', blurb: 'Stark white, loud orange', theme: theme('#ffffff', '#0a0a0a', '#ff4d00', 'Archivo', 'Archivo', 'upper', 'bold', 0) },
+  { id: 'tide', name: 'Tide', blurb: 'Ocean teal on navy', theme: theme('#0e1c24', '#e2f0f3', '#63d2c6', 'Outfit', 'Outfit', 'normal', 'bold', 12) },
+  { id: 'blush', name: 'Blush', blurb: 'Soft rose, modern serif', theme: theme('#fbf1ef', '#3b2a2a', '#c76b72', 'Instrument Serif', 'Manrope', 'normal', 'regular', 20) },
+  { id: 'noir', name: 'Noir', blurb: 'Black tie, gold details', theme: theme('#08080a', '#f3efe6', '#c8a96a', 'Bodoni Moda', 'Inter', 'normal', 'regular', 0) },
+  { id: 'riviera', name: 'Riviera', blurb: 'Navy and coral summer', theme: theme('#fdf6ec', '#1d2b53', '#ff6b5b', 'Abril Fatface', 'Poppins', 'normal', 'regular', 16) },
+  { id: 'matcha', name: 'Matcha', blurb: 'Calm greens, soft serif', theme: theme('#f1f3e8', '#26331d', '#6f8f32', 'Young Serif', 'Sora', 'normal', 'regular', 12) },
+  { id: 'lavender', name: 'Lavender', blurb: 'Airy violet, fine lines', theme: theme('#f6f2fb', '#2e2440', '#8b6fd6', 'Italiana', 'Raleway', 'upper', 'regular', 6) },
+  { id: 'bloom', name: 'Bloom', blurb: 'Romantic script, blush', theme: theme('#fffaf7', '#4a3b36', '#c98b7e', 'Dancing Script', 'Lora', 'normal', 'bold', 14) },
+  { id: 'sunday', name: 'Sunday', blurb: 'Handwritten, sunny', theme: theme('#fff8e7', '#3b2f1e', '#e8902a', 'Caveat', 'Josefin Sans', 'normal', 'bold', 18) },
+  { id: 'terminal', name: 'Terminal', blurb: 'Green on black, mono', theme: theme('#0b0f0b', '#c9f5c9', '#39ff88', 'Space Mono', 'Space Mono', 'normal', 'bold', 0) },
+  { id: 'gallery', name: 'Gallery', blurb: 'Quiet museum white', theme: theme('#fafafa', '#191919', '#191919', 'EB Garamond', 'Montserrat', 'normal', 'regular', 0) },
+  { id: 'unbound', name: 'Unbound', blurb: 'Chunky, playful, bright', theme: theme('#eef1ff', '#14163a', '#3b4bff', 'Unbounded', 'DM Sans', 'normal', 'bold', 22) },
 ];
 
 export const OPTIONS = {
   heroStyle: ['cover', 'banner', 'split', 'minimal'],
-  heroHeight: ['compact', 'medium', 'large', 'full'],
   align: ['left', 'center'],
   logoShape: ['round', 'square', 'plain'],
   albumStyle: ['cards', 'tiles', 'editorial', 'feature', 'inline'],
@@ -89,35 +77,151 @@ export const OPTIONS = {
   sort: ['custom', 'newest', 'oldest', 'name'],
   width: ['narrow', 'normal', 'wide'],
   galleryStyle: ['justified', 'masonry', 'grid'],
+  photoStyle: ['justified', 'masonry', 'grid', 'stack', 'carousel'],
   density: ['tight', 'normal', 'airy'],
   headingCase: ['normal', 'upper'],
   headingWeight: ['regular', 'bold'],
+  blockTypes: ['albums', 'photos', 'text', 'quote', 'divider', 'button'],
+  textSize: ['normal', 'large'],
+  dividerStyle: ['line', 'ornament', 'space'],
+  dividerSize: ['s', 'm', 'l'],
+  buttonStyle: ['accent', 'outline'],
 };
 
-export function defaultDraft(title = 'Untitled page', presetId = 'atelier') {
-  const preset = PRESETS.find((p) => p.id === presetId) || PRESETS[0];
+const blockId = () => crypto.randomBytes(8).toString('hex');
+
+// ---- block defaults ---------------------------------------------------------------
+
+export function newBlock(type, extra = {}) {
+  const base = { id: blockId(), type };
+  const defaults = {
+    albums: { heading: '', albums: [], albumStyle: 'cards', columns: 3, grouping: 'none', sort: 'custom', showCounts: true, showDates: true },
+    photos: { heading: '', text: '', photos: [], style: 'justified', density: 'normal', rowHeight: 280, columns: 3 },
+    text: { heading: '', body: '', align: 'left', size: 'normal' },
+    quote: { text: '', author: '', align: 'center' },
+    divider: { style: 'line', size: 'm' },
+    button: { label: 'Get in touch', url: '', style: 'accent', align: 'center' },
+  };
+  return { ...base, ...defaults[type], ...extra };
+}
+
+// ---- templates ------------------------------------------------------------------------
+
+export const TEMPLATES = [
+  {
+    id: 'wedding',
+    name: 'Wedding',
+    blurb: 'Full-screen cover, galleries by section',
+    preset: 'linen',
+    hero: { style: 'cover', size: 100, align: 'center', overlay: 35, titleScale: 115 },
+    blocks: () => [
+      newBlock('text', { body: 'Thank you for letting us be part of your day. Here are your galleries — tap any photo to see it full screen.', align: 'center', size: 'large' }),
+      newBlock('albums', { albumStyle: 'tiles', grouping: 'sections' }),
+      newBlock('divider', { style: 'ornament' }),
+      newBlock('quote', { text: 'And in the end, the love you take is equal to the love you make.', author: '' }),
+    ],
+  },
+  {
+    id: 'portfolio',
+    name: 'Portfolio',
+    blurb: 'Big type, best shots, then projects',
+    preset: 'poster',
+    hero: { style: 'minimal', size: 55, align: 'left', titleScale: 120 },
+    blocks: () => [
+      newBlock('photos', { heading: 'Selected work', style: 'masonry', density: 'airy' }),
+      newBlock('albums', { heading: 'Projects', albumStyle: 'editorial' }),
+      newBlock('button', { label: 'Work with me', align: 'left' }),
+    ],
+  },
+  {
+    id: 'event',
+    name: 'Event recap',
+    blurb: 'Banner, highlights, all galleries',
+    preset: 'afterglow',
+    hero: { style: 'banner', size: 40, align: 'center' },
+    blocks: () => [
+      newBlock('text', { body: 'What a night. Here are the highlights — the full galleries are below.', align: 'center' }),
+      newBlock('photos', { heading: 'Highlights', style: 'carousel', rowHeight: 360 }),
+      newBlock('albums', { heading: 'All galleries', albumStyle: 'cards', columns: 3 }),
+    ],
+  },
+  {
+    id: 'travel',
+    name: 'Travel journal',
+    blurb: 'Split header, every photo on the page',
+    preset: 'tide',
+    hero: { style: 'split', size: 70, align: 'left' },
+    blocks: () => [
+      newBlock('text', { heading: 'Where we went', body: 'A few weeks, a lot of kilometres. Notes and photos from the road.' }),
+      newBlock('albums', { albumStyle: 'inline' }),
+      newBlock('divider', { style: 'line' }),
+      newBlock('text', { body: 'Until next time.', align: 'center', size: 'large' }),
+    ],
+  },
+  {
+    id: 'delivery',
+    name: 'Client delivery',
+    blurb: 'Clear instructions and downloads',
+    preset: 'atelier',
+    hero: { style: 'cover', size: 60, align: 'left' },
+    blocks: () => [
+      newBlock('text', { heading: 'Your photos are ready', body: 'Open a gallery to view everything in full screen. Use “Download all” to save a whole gallery as a ZIP file.' }),
+      newBlock('albums', { albumStyle: 'cards', columns: 3 }),
+      newBlock('button', { label: 'Leave a review' }),
+    ],
+  },
+  {
+    id: 'story',
+    name: 'Photo story',
+    blurb: 'Large photos one after another',
+    preset: 'noir',
+    hero: { style: 'cover', size: 100, align: 'center', overlay: 45 },
+    blocks: () => [
+      newBlock('text', { body: 'Some stories are better told in pictures.', align: 'center', size: 'large' }),
+      newBlock('photos', { style: 'stack' }),
+      newBlock('quote', { text: 'Photography is the story I fail to put into words.', author: 'Destin Sparks' }),
+      newBlock('photos', { style: 'carousel' }),
+    ],
+  },
+  {
+    id: 'blank',
+    name: 'Blank',
+    blurb: 'Just a header — build it yourself',
+    preset: 'atelier',
+    hero: { style: 'minimal', size: 45, align: 'left' },
+    blocks: () => [],
+  },
+];
+
+export function defaultDraft(title = 'Untitled page', presetId, templateId = 'delivery') {
+  const template = TEMPLATES.find((t) => t.id === templateId) || TEMPLATES.find((t) => t.id === 'delivery');
+  const preset = PRESETS.find((p) => p.id === (presetId || template.preset)) || PRESETS[0];
   return {
+    version: 2,
     title,
     subtitle: '',
-    intro: '',
     cover: null,
     logo: null,
     theme: { preset: preset.id, ...preset.theme },
-    hero: { style: 'cover', height: 'large', align: 'center', overlay: 40, logoShape: 'round' },
-    layout: { albumStyle: 'cards', columns: 3, grouping: 'none', sort: 'custom', showCounts: true, showDates: true, width: 'normal' },
+    hero: { style: 'cover', size: 78, align: 'center', overlay: 40, logoShape: 'round', logoSize: 88, titleScale: 100, focusX: 50, focusY: 50, ...template.hero },
+    blocks: template.blocks(),
+    layout: { width: 'normal' },
     gallery: { style: 'justified', density: 'normal' },
-    albums: [],
     footer: { text: '', contactLabel: '', contactUrl: '', poweredBy: true },
   };
 }
 
+// ---- sanitizing ---------------------------------------------------------------------------
+
 const HEX = /^#[0-9a-f]{6}$/i;
 const IMAGE_ID = /^[a-z0-9]{8,40}\.(jpg|png|webp|gif|avif)$/;
-const UUID = /^[0-9a-f-]{8,64}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BLOCK_ID = /^[0-9a-f]{16}$/;
+const HERO_HEIGHTS = { compact: 42, medium: 60, large: 78, full: 100 };
 
 const str = (v, max, fallback = '') => (typeof v === 'string' ? v.slice(0, max) : fallback);
 const pick = (v, list, fallback) => (list.includes(v) ? v : fallback);
-const num = (v, min, max, fallback) => (Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Math.round(Number(v)))) : fallback);
+const num = (v, min, max, fallback) => (v !== null && v !== '' && Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Math.round(Number(v)))) : fallback);
 const flag = (v, fallback) => (typeof v === 'boolean' ? v : fallback);
 const hex = (v, fallback) => (typeof v === 'string' && HEX.test(v) ? v.toLowerCase() : fallback);
 const image = (v) => (typeof v === 'string' && IMAGE_ID.test(v) ? v : null);
@@ -130,11 +234,91 @@ export function safeUrl(v) {
     const url = new URL(value);
     return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
   } catch {
-    // Allow bare emails and domains for convenience.
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return `mailto:${value}`;
     if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(value)) return `https://${value}`;
     return '';
   }
+}
+
+function sanitizeAlbums(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .filter((a) => a && typeof a.albumId === 'string' && UUID.test(a.albumId) && !seen.has(a.albumId) && seen.add(a.albumId))
+    .slice(0, 200)
+    .map((a) => ({
+      albumId: a.albumId,
+      title: str(a.title, 160),
+      description: str(a.description, 2000),
+      section: str(a.section, 80).trim(),
+      coverAssetId: typeof a.coverAssetId === 'string' && UUID.test(a.coverAssetId) ? a.coverAssetId : null,
+    }));
+}
+
+function sanitizePhotos(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .filter((p) => p && typeof p.id === 'string' && UUID.test(p.id) && !seen.has(p.id) && seen.add(p.id))
+    .slice(0, 1000)
+    .map((p) => ({
+      id: p.id,
+      ratio: Math.round(Math.min(5, Math.max(0.2, Number(p.ratio) || 1.5)) * 1000) / 1000,
+      video: Boolean(p.video),
+      duration: Number.isFinite(Number(p.duration)) && p.duration !== null ? Math.round(Number(p.duration)) : null,
+      date: typeof p.date === 'string' && !Number.isNaN(Date.parse(p.date)) ? p.date.slice(0, 40) : null,
+      caption: str(p.caption, 300),
+    }));
+}
+
+export function sanitizeBlock(b) {
+  if (!b || !OPTIONS.blockTypes.includes(b.type)) return null;
+  const d = newBlock(b.type);
+  const out = { id: typeof b.id === 'string' && BLOCK_ID.test(b.id) ? b.id : d.id, type: b.type };
+  switch (b.type) {
+    case 'albums':
+      return {
+        ...out,
+        heading: str(b.heading, 160),
+        albums: sanitizeAlbums(b.albums),
+        albumStyle: pick(b.albumStyle, OPTIONS.albumStyle, d.albumStyle),
+        columns: num(b.columns, 2, 4, d.columns),
+        grouping: pick(b.grouping, OPTIONS.grouping, d.grouping),
+        sort: pick(b.sort, OPTIONS.sort, d.sort),
+        showCounts: flag(b.showCounts, true),
+        showDates: flag(b.showDates, true),
+      };
+    case 'photos':
+      return {
+        ...out,
+        heading: str(b.heading, 160),
+        text: str(b.text, 2000),
+        photos: sanitizePhotos(b.photos),
+        style: pick(b.style, OPTIONS.photoStyle, d.style),
+        density: pick(b.density, OPTIONS.density, d.density),
+        rowHeight: num(b.rowHeight, 140, 560, d.rowHeight),
+        columns: num(b.columns, 2, 5, d.columns),
+      };
+    case 'text':
+      return { ...out, heading: str(b.heading, 200), body: str(b.body, 6000), align: pick(b.align, OPTIONS.align, 'left'), size: pick(b.size, OPTIONS.textSize, 'normal') };
+    case 'quote':
+      return { ...out, text: str(b.text, 1000), author: str(b.author, 160), align: pick(b.align, OPTIONS.align, 'center') };
+    case 'divider':
+      return { ...out, style: pick(b.style, OPTIONS.dividerStyle, 'line'), size: pick(b.size, OPTIONS.dividerSize, 'm') };
+    case 'button':
+      return { ...out, label: str(b.label, 80), url: safeUrl(b.url), style: pick(b.style, OPTIONS.buttonStyle, 'accent'), align: pick(b.align, OPTIONS.align, 'center') };
+  }
+  return null;
+}
+
+// Version-1 pages had a fixed intro + album list; turn those into blocks.
+// The ids are fixed so a migrated draft and its live copy stay identical.
+function migrateV1(input) {
+  const blocks = [];
+  if (typeof input.intro === 'string' && input.intro.trim()) {
+    blocks.push({ id: '0000000000000001', type: 'text', body: input.intro, align: input.hero?.align || 'left' });
+  }
+  const l = input.layout || {};
+  blocks.push({ id: '0000000000000002', type: 'albums', albums: input.albums || [], ...l });
+  return blocks;
 }
 
 // Coerce any user-supplied draft into a valid one. Unknown keys are dropped.
@@ -142,14 +326,18 @@ export function sanitizeDraft(input = {}) {
   const d = defaultDraft();
   const t = input.theme || {};
   const h = input.hero || {};
-  const l = input.layout || {};
   const g = input.gallery || {};
   const f = input.footer || {};
-  const seen = new Set();
+  const rawBlocks = Array.isArray(input.blocks) ? input.blocks : input.version === 2 ? [] : migrateV1(input);
+  const ids = new Set();
+  const blocks = rawBlocks
+    .map(sanitizeBlock)
+    .filter((b) => b && !ids.has(b.id) && ids.add(b.id))
+    .slice(0, 60);
   return {
+    version: 2,
     title: str(input.title, 120, 'Untitled page').trim() || 'Untitled page',
     subtitle: str(input.subtitle, 240),
-    intro: str(input.intro, 4000),
     cover: image(input.cover),
     logo: image(input.logo),
     theme: {
@@ -164,35 +352,22 @@ export function sanitizeDraft(input = {}) {
       radius: num(t.radius, 0, 32, d.theme.radius),
     },
     hero: {
-      style: pick(h.style, OPTIONS.heroStyle, d.hero.style),
-      height: pick(h.height, OPTIONS.heroHeight, d.hero.height),
-      align: pick(h.align, OPTIONS.align, d.hero.align),
-      overlay: num(h.overlay, 0, 90, d.hero.overlay),
-      logoShape: pick(h.logoShape, OPTIONS.logoShape, d.hero.logoShape),
+      style: pick(h.style, OPTIONS.heroStyle, 'cover'),
+      size: num(typeof h.size === 'number' ? h.size : HERO_HEIGHTS[h.height] ?? h.size, 20, 100, 78),
+      align: pick(h.align, OPTIONS.align, 'center'),
+      overlay: num(h.overlay, 0, 90, 40),
+      logoShape: pick(h.logoShape, OPTIONS.logoShape, 'round'),
+      logoSize: num(h.logoSize, 32, 260, 88),
+      titleScale: num(h.titleScale, 50, 180, 100),
+      focusX: num(h.focusX, 0, 100, 50),
+      focusY: num(h.focusY, 0, 100, 50),
     },
-    layout: {
-      albumStyle: pick(l.albumStyle, OPTIONS.albumStyle, d.layout.albumStyle),
-      columns: num(l.columns, 2, 4, d.layout.columns),
-      grouping: pick(l.grouping, OPTIONS.grouping, d.layout.grouping),
-      sort: pick(l.sort, OPTIONS.sort, d.layout.sort),
-      showCounts: flag(l.showCounts, true),
-      showDates: flag(l.showDates, true),
-      width: pick(l.width, OPTIONS.width, d.layout.width),
-    },
+    blocks,
+    layout: { width: pick(input.layout?.width, OPTIONS.width, 'normal') },
     gallery: {
-      style: pick(g.style, OPTIONS.galleryStyle, d.gallery.style),
-      density: pick(g.density, OPTIONS.density, d.gallery.density),
+      style: pick(g.style, OPTIONS.galleryStyle, 'justified'),
+      density: pick(g.density, OPTIONS.density, 'normal'),
     },
-    albums: (Array.isArray(input.albums) ? input.albums : [])
-      .filter((a) => a && typeof a.albumId === 'string' && UUID.test(a.albumId) && !seen.has(a.albumId) && seen.add(a.albumId))
-      .slice(0, 200)
-      .map((a) => ({
-        albumId: a.albumId,
-        title: str(a.title, 160),
-        description: str(a.description, 2000),
-        section: str(a.section, 80).trim(),
-        coverAssetId: typeof a.coverAssetId === 'string' && UUID.test(a.coverAssetId) ? a.coverAssetId : null,
-      })),
     footer: {
       text: str(f.text, 600),
       contactLabel: str(f.contactLabel, 60),
@@ -201,6 +376,10 @@ export function sanitizeDraft(input = {}) {
     },
   };
 }
+
+// Helpers used across server and renderer.
+export const albumEntries = (cfg) => cfg.blocks.filter((b) => b.type === 'albums').flatMap((b) => b.albums);
+export const photoBlocks = (cfg) => cfg.blocks.filter((b) => b.type === 'photos');
 
 // ---- color helpers -------------------------------------------------------
 
@@ -224,10 +403,17 @@ export const contrast = (a, b) => {
 };
 export const readableOn = (bg) => (contrast(bg, '#ffffff') >= contrast(bg, '#111111') ? '#ffffff' : '#111111');
 
+const FALLBACK = {
+  sans: 'ui-sans-serif, system-ui, sans-serif',
+  display: 'ui-sans-serif, system-ui, sans-serif',
+  serif: 'ui-serif, Georgia, serif',
+  script: 'cursive',
+  mono: 'ui-monospace, SFMono-Regular, Consolas, monospace',
+};
 export function fontStack(name) {
   const font = FONTS[name] || FONTS.Inter;
   if (font.system) return font.system;
-  return `"${name}", ${font.category === 'serif' ? 'ui-serif, Georgia, serif' : 'ui-sans-serif, system-ui, sans-serif'}`;
+  return `"${name}", ${FALLBACK[font.category] || FALLBACK.sans}`;
 }
 
 export function googleFontsHref(names) {

@@ -131,7 +131,6 @@ p {
 
 /* ---- logo ------------------------------------------------------------------- */
 .logo {
-  --logo: 88px;
   width: var(--logo);
   height: var(--logo);
   margin-bottom: 1.25rem;
@@ -147,7 +146,7 @@ p {
 .logo-plain {
   width: auto;
   height: auto;
-  max-width: 220px;
+  max-width: calc(var(--logo) * 2.5);
   max-height: var(--logo);
   object-fit: contain;
   background: none;
@@ -158,6 +157,7 @@ p {
 }
 
 /* ---- hero ------------------------------------------------------------------- */
+/* --hero-size is a number (percent of the screen height), set from the editor. */
 .hero {
   position: relative;
 }
@@ -171,7 +171,7 @@ p {
   text-align: center;
 }
 .hero-title {
-  font-size: clamp(2.6rem, 7vw, 6rem);
+  font-size: calc(clamp(2.6rem, 7vw, 6rem) * var(--title-scale, 1));
 }
 .hero-subtitle {
   max-width: 46ch;
@@ -179,26 +179,20 @@ p {
   font-size: clamp(1.05rem, 1.6vw, 1.3rem);
   opacity: 0.85;
 }
+.hero-img {
+  object-fit: cover;
+  object-position: var(--fx, 50%) var(--fy, 50%);
+}
 
 /* cover: full-bleed photo with the title on top */
 .hero-cover {
-  --hero-h: 78vh;
   display: flex;
   align-items: flex-end;
-  min-height: max(var(--hero-h), 360px);
+  min-height: max(calc(var(--hero-size) * 1svh), 280px);
   overflow: hidden;
   isolation: isolate;
   color: #fff;
   background: var(--surface-2);
-}
-.hero-cover.h-compact {
-  --hero-h: 42vh;
-}
-.hero-cover.h-medium {
-  --hero-h: 60vh;
-}
-.hero-cover.h-full {
-  --hero-h: 100svh;
 }
 .hero-cover.align-center {
   align-items: center;
@@ -212,13 +206,13 @@ p {
   z-index: -2;
   width: 100%;
   height: 100%;
-  object-fit: cover;
   animation: hero-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .hero-shade {
   position: absolute;
   inset: 0;
   z-index: -1;
+  pointer-events: none;
   background: linear-gradient(
     to top,
     rgb(0 0 0 / calc(var(--overlay) + 0.2)) 0%,
@@ -260,27 +254,15 @@ p {
 }
 
 /* banner: a photo strip with the logo overlapping it */
-.hero-banner {
-  --banner-h: 46vh;
-}
-.hero-banner.h-compact {
-  --banner-h: 24vh;
-}
-.hero-banner.h-medium {
-  --banner-h: 34vh;
-}
-.hero-banner.h-full {
-  --banner-h: 72vh;
-}
 .banner {
-  height: max(var(--banner-h), 160px);
+  position: relative;
+  height: max(calc(var(--hero-size) * 1svh), 140px);
   overflow: hidden;
   background: var(--surface-2);
 }
 .banner .hero-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
   animation: hero-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .hero-banner .hero-inner {
@@ -296,7 +278,7 @@ p {
   margin-top: 0;
 }
 .hero-banner .hero-title {
-  font-size: clamp(2.2rem, 5.5vw, 4.6rem);
+  font-size: calc(clamp(2.2rem, 5.5vw, 4.6rem) * var(--title-scale, 1));
 }
 .hero-banner.no-image .hero-inner {
   padding-top: clamp(64px, 10vh, 128px);
@@ -315,29 +297,19 @@ p {
   padding-block: clamp(64px, 12vh, 160px) 0;
 }
 .split-media {
-  aspect-ratio: 4 / 5;
+  position: relative;
+  height: max(calc(var(--hero-size) * 1svh - 2 * clamp(28px, 5vw, 72px)), 240px);
   overflow: hidden;
   border-radius: var(--radius);
   background: var(--surface);
 }
-.h-compact .split-media {
-  aspect-ratio: 16 / 10;
-}
-.h-medium .split-media {
-  aspect-ratio: 5 / 4;
-}
-.h-full .split-media {
-  aspect-ratio: auto;
-  height: calc(100svh - 2 * clamp(28px, 5vw, 72px));
-}
 .split-media .hero-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
   animation: hero-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .hero-split .hero-title {
-  font-size: clamp(2.4rem, 5vw, 5.2rem);
+  font-size: calc(clamp(2.4rem, 5vw, 5.2rem) * var(--title-scale, 1));
 }
 @media (max-width: 760px) {
   .split {
@@ -345,26 +317,21 @@ p {
   }
   .split-media {
     order: -1;
-  }
-  .h-full .split-media {
-    height: 60svh;
+    height: min(max(calc(var(--hero-size) * 0.7svh), 240px), 70svh);
   }
 }
 
 /* minimal: typography only */
-.hero-minimal .hero-inner {
-  padding-block: clamp(72px, 15vh, 190px) clamp(8px, 2vh, 24px);
-}
-.hero-minimal.h-compact .hero-inner {
-  padding-block: 64px 8px;
-}
-.hero-minimal.h-full {
+.hero-minimal {
   display: flex;
-  align-items: center;
-  min-height: 86svh;
+  align-items: flex-end;
+  min-height: calc(var(--hero-size) * 0.8svh);
+}
+.hero-minimal .hero-inner {
+  padding-block: clamp(64px, 10vh, 140px) clamp(8px, 2vh, 24px);
 }
 .hero-minimal .hero-title {
-  font-size: clamp(3rem, 10vw, 8.5rem);
+  font-size: calc(clamp(3rem, 10vw, 8.5rem) * var(--title-scale, 1));
   line-height: 0.95;
 }
 .hero-minimal .hero-inner::after {
@@ -376,32 +343,7 @@ p {
   background: var(--accent);
 }
 
-/* ---- intro ------------------------------------------------------------------ */
-.intro {
-  padding-top: clamp(40px, 7vw, 96px);
-  font-size: clamp(1.05rem, 1.4vw, 1.24rem);
-  line-height: 1.7;
-}
-.intro p {
-  max-width: 62ch;
-  margin: 0 0 1em;
-}
-.intro.align-center p {
-  margin-inline: auto;
-  text-align: center;
-}
-.intro a,
-.footer-text a,
-.row-desc a,
-.album-desc a,
-.inline-desc a {
-  color: var(--accent);
-}
-
 /* ---- album list ------------------------------------------------------------- */
-.albums {
-  padding-block: clamp(40px, 7vw, 96px);
-}
 .group + .group {
   margin-top: clamp(56px, 8vw, 112px);
 }
@@ -1081,6 +1023,336 @@ body.lb-lock {
   margin: 0;
   color: #e5484d;
   font-size: 0.9rem;
+}
+
+/* ---- blocks -------------------------------------------------------------------- */
+main#content {
+  padding-block: clamp(24px, 4vw, 56px);
+}
+.block {
+  position: relative;
+  padding-block: clamp(24px, 4vw, 56px);
+}
+.block-heading {
+  margin-bottom: clamp(16px, 2.4vw, 28px);
+  font-size: clamp(1.7rem, 3.2vw, 2.6rem);
+}
+.inline-head .block-heading {
+  margin-bottom: 0;
+}
+.text-block .prose {
+  max-width: 64ch;
+  font-size: clamp(1.02rem, 1.3vw, 1.15rem);
+  line-height: 1.7;
+}
+.text-block.size-large .prose {
+  font-size: clamp(1.2rem, 2vw, 1.6rem);
+  line-height: 1.55;
+}
+.text-block.size-large .block-heading {
+  font-size: clamp(2.2rem, 5vw, 3.8rem);
+}
+.text-block.align-center {
+  text-align: center;
+}
+.text-block.align-center .prose {
+  margin-inline: auto;
+}
+.prose p {
+  margin: 0 0 1em;
+}
+.prose p:last-child {
+  margin-bottom: 0;
+}
+.prose a,
+.footer-text a,
+.row-desc a,
+.album-desc a,
+.inline-desc a {
+  color: var(--accent);
+}
+.quote {
+  max-width: 900px;
+  margin: 0;
+}
+.quote.align-center {
+  margin-inline: auto;
+  text-align: center;
+}
+.quote blockquote {
+  margin: 0;
+  font-family: var(--font-h);
+  font-size: clamp(1.6rem, 3.6vw, 2.8rem);
+  font-weight: var(--h-weight);
+  line-height: 1.25;
+  letter-spacing: var(--h-track);
+  text-wrap: balance;
+}
+.quote blockquote::before {
+  content: '“';
+  display: block;
+  height: 0.55em;
+  color: var(--accent);
+  font-size: 2.2em;
+  line-height: 1;
+}
+.quote figcaption {
+  margin-top: 1.2rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.quote figcaption::before {
+  content: '— ';
+}
+.divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2em;
+  color: var(--accent);
+}
+.divider-line::before {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.divider.size-s {
+  padding-block: 4px;
+}
+.divider.size-m {
+  padding-block: 20px;
+}
+.divider.size-l {
+  padding-block: 48px;
+}
+.divider-space.size-s {
+  height: 16px;
+}
+.divider-space.size-m {
+  height: 56px;
+}
+.divider-space.size-l {
+  height: 120px;
+}
+.divider-ornament span {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+.button-block.align-center {
+  text-align: center;
+}
+.btn-lg {
+  height: 52px;
+  padding: 0 1.6rem;
+  font-size: 1rem;
+}
+.btn.is-placeholder {
+  opacity: 0.55;
+  cursor: default;
+}
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 40px 24px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-align: center;
+}
+.placeholder b {
+  color: var(--fg);
+  font-family: var(--font-h);
+  font-size: 1.3rem;
+  font-weight: var(--h-weight);
+}
+
+/* photo blocks: stack and carousel */
+.g-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(28px, 5vw, 72px);
+}
+.g-stack figure {
+  width: 100%;
+  margin: 0;
+}
+.g-stack .g-item {
+  width: 100%;
+  max-height: 88svh;
+  margin-inline: auto;
+}
+.g-stack .g-item img {
+  object-fit: cover;
+}
+.g-stack figcaption,
+.g-carousel figcaption {
+  margin-top: 0.7rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+.g-carousel {
+  display: flex;
+  gap: var(--g-gap);
+  overflow-x: auto;
+  padding-bottom: 12px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  overscroll-behavior-x: contain;
+}
+.g-carousel figure {
+  flex: none;
+  margin: 0;
+  scroll-snap-align: start;
+}
+.g-carousel .g-item {
+  height: var(--row);
+}
+.g-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.g-nav button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.g-nav button:hover {
+  background: var(--surface);
+}
+
+/* ---- editor preview: hover outlines, handles --------------------------------------- */
+.is-editing [data-block],
+.is-editing [data-edit] {
+  position: relative;
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+  transition: outline-color 0.15s;
+}
+.is-editing [data-block]:hover,
+.is-editing [data-edit]:hover,
+.is-editing .is-selected {
+  outline-color: color-mix(in srgb, #4f7cff 70%, transparent);
+}
+.edit-chip {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #4f7cff;
+  color: #fff;
+  font: 600 12px/1 system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+}
+.is-editing [data-block]:hover > .edit-chip,
+.is-editing [data-edit]:hover > .edit-chip {
+  display: inline-flex;
+}
+.resize-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 18px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #4f7cff;
+  color: #fff;
+  font: 600 11px/1 system-ui, sans-serif;
+  translate: -50% 0;
+  cursor: ns-resize;
+  touch-action: none;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  user-select: none;
+}
+.is-editing .scroll-cue {
+  display: none;
+}
+.resize-bar::before {
+  content: '';
+  width: 18px;
+  height: 2px;
+  border-block: 2px solid currentColor;
+  box-sizing: content-box;
+}
+.logo-wrap {
+  position: relative;
+  display: inline-block;
+}
+.logo-handle {
+  position: absolute;
+  right: -6px;
+  bottom: calc(1.25rem - 6px);
+  z-index: 30;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #4f7cff;
+  cursor: nwse-resize;
+  touch-action: none;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+}
+.is-editing .hero-img {
+  cursor: grab;
+  touch-action: none;
+}
+.is-editing .hero-img:active {
+  cursor: grabbing;
+}
+.drag-hint {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 25;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font: 500 12px/1 system-ui, sans-serif;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.is-editing .hero:hover .drag-hint {
+  opacity: 1;
+}
+.size-tip {
+  position: fixed;
+  z-index: 50;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #111;
+  color: #fff;
+  font: 600 12px/1 system-ui, sans-serif;
+  pointer-events: none;
 }
 
 /* ---- motion ------------------------------------------------------------------- */

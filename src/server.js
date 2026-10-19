@@ -21,7 +21,6 @@ import {
   readForm,
   readJson,
   redirect,
-  send,
   sendHtml,
   sendJson,
   serveFile,
@@ -44,7 +43,7 @@ import {
 import * as proxy from './proxy.js';
 import { dateLabel, renderAlbum, renderIndex, renderLocked, renderMessage } from './render.js';
 import { load, pages, save, uploadsDir } from './store.js';
-import { FONTS, OPTIONS, PRESETS, sanitizeDraft } from './themes.js';
+import { albumEntries, FONTS, OPTIONS, photoBlocks, PRESETS, sanitizeDraft, TEMPLATES } from './themes.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STATIC = path.join(ROOT, 'public');
@@ -64,20 +63,22 @@ async function cached(key, ttl, fn) {
 
 // ---- public site (shared by live pages and the editor preview) ------------------------
 
+// Album metadata for every album on the page, keyed by album id.
 async function resolveAlbums(page, cfg, base) {
-  return Promise.all(
-    cfg.albums.map(async (entry) => {
+  const entries = new Map(albumEntries(cfg).map((e) => [e.albumId, e]));
+  const out = new Map();
+  await Promise.all(
+    [...entries.values()].map(async (entry) => {
       const link = page.links[entry.albumId];
       const fallback = { ...entry, title: entry.title || 'Album unavailable', missing: true, href: '#' };
-      if (!link) return fallback;
+      if (!link) return out.set(entry.albumId, fallback);
       try {
         const album = await cached(`album:${link.key}`, 60_000, () => immich.getAlbum(entry.albumId, { key: link.key }));
         const coverId = entry.coverAssetId || album.albumThumbnailAssetId;
-        return {
+        out.set(entry.albumId, {
           albumId: entry.albumId,
-          title: entry.title.trim() || album.albumName || 'Untitled album',
-          description: entry.description.trim() || album.description || '',
-          section: entry.section,
+          title: album.albumName || 'Untitled album',
+          description: album.description || '',
           count: album.assetCount ?? null,
           start: album.startDate || null,
           end: album.endDate || null,
@@ -85,12 +86,13 @@ async function resolveAlbums(page, cfg, base) {
           dateText: dateLabel(album.startDate, album.endDate),
           coverUrl: coverId ? `${base}/m/${entry.albumId}/${coverId}/preview` : null,
           href: `${base}/a/${entry.albumId}`,
-        };
+        });
       } catch (err) {
-        return { ...fallback, error: err.message };
+        out.set(entry.albumId, { ...fallback, error: err.message });
       }
     }),
   );
+  return out;
 }
 
 const unlockAttempts = new Map();
@@ -104,14 +106,15 @@ function rateLimited(req) {
   return entry.count > 10;
 }
 
-const downloadSets = new Map();
 const zipName = (name, part, parts) => {
-  const base = `${name || 'album'}${parts > 1 ? ` (part ${part + 1} of ${parts})` : ''}.zip`;
+  const base = `${name || 'photos'}${parts > 1 ? ` (part ${part + 1} of ${parts})` : ''}.zip`;
   return `attachment; filename="${base.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(base)}`;
 };
 
-async function site(req, res, { page, cfg, base, rest, preview }) {
-  const allowed = (albumId) => cfg.albums.some((a) => a.albumId === albumId) && page.links[albumId];
+async function site(req, res, { page, cfg, base, rest, preview, edit }) {
+  const blocks = new Map(photoBlocks(cfg).map((b) => [b.id, b]));
+  const albumIds = new Set(albumEntries(cfg).map((a) => a.albumId));
+  const allowed = (ref) => (albumIds.has(ref) || blocks.has(ref)) && page.links[ref];
   const host = origin(req, config.publicUrl);
   let m;
 
@@ -122,31 +125,29 @@ async function site(req, res, { page, cfg, base, rest, preview }) {
       page.views = (page.views || 0) + 1;
       save();
     }
-    return sendHtml(res, 200, renderIndex({ cfg, page, base, albums, origin: host, preview }));
+    return sendHtml(res, 200, renderIndex({ cfg, page, base, albums, origin: host, preview, edit }));
   }
 
   if ((m = rest.match(/^\/a\/([0-9a-f-]+)\/?$/i))) {
-    if (!allowed(m[1])) throw new HttpError(404, 'Album not found');
+    if (!albumIds.has(m[1]) || !page.links[m[1]]) throw new HttpError(404, 'Album not found');
     const albums = await resolveAlbums(page, cfg, base);
-    const album = albums.find((a) => a.albumId === m[1]);
+    const album = albums.get(m[1]);
     if (!album || album.missing) throw new HttpError(404, 'Album not found');
-    return sendHtml(res, 200, renderAlbum({ cfg, page, base, album, albums, origin: host, preview }));
+    return sendHtml(res, 200, renderAlbum({ cfg, page, base, album, albums, origin: host, preview, edit }));
   }
 
   if ((m = rest.match(/^\/api\/album\/([0-9a-f-]+)$/i))) {
-    if (!allowed(m[1])) throw new HttpError(404, 'Album not found');
+    if (!albumIds.has(m[1]) || !page.links[m[1]]) throw new HttpError(404, 'Album not found');
     const { key } = page.links[m[1]];
     const album = await cached(`album:${key}`, 60_000, () => immich.getAlbum(m[1], { key }));
-    const assets = await cached(`assets:${key}:${album.order}`, preview ? 10_000 : 60_000, () =>
-      immich.albumAssets(m[1], { key }, album.order),
-    );
+    const assets = await cached(`assets:${key}:${album.order}`, preview ? 10_000 : 60_000, () => immich.albumAssets(m[1], { key }, album.order));
     return sendJson(res, 200, { assets });
   }
 
   if ((m = rest.match(/^\/m\/([0-9a-f-]+)\/([0-9a-f-]+)\/(thumbnail|preview|original|video)$/i))) {
-    const [, albumId, assetId, size] = m;
-    if (!allowed(albumId) || !UUID.test(assetId)) throw new HttpError(404, 'Not found');
-    const { key } = page.links[albumId];
+    const [, ref, assetId, size] = m;
+    if (!allowed(ref) || !UUID.test(assetId)) throw new HttpError(404, 'Not found');
+    const { key } = page.links[ref];
     const cache = 'private, max-age=604800';
     if (size === 'original') {
       if (!page.sharing.allowDownload) throw new HttpError(403, 'Downloads are turned off for this page.');
@@ -157,19 +158,20 @@ async function site(req, res, { page, cfg, base, rest, preview }) {
   }
 
   if ((m = rest.match(/^\/dl\/([0-9a-f-]+)(?:\/(\d+))?$/i))) {
-    const [, albumId, part] = m;
-    if (!allowed(albumId)) throw new HttpError(404, 'Not found');
+    const [, ref, part] = m;
+    if (!allowed(ref)) throw new HttpError(404, 'Not found');
     if (!page.sharing.allowDownload) throw new HttpError(403, 'Downloads are turned off for this page.');
-    const { key } = page.links[albumId];
-    const info = await cached(`dl:${key}`, 10 * 60_000, () => immich.api('POST', '/download/info', { key, body: { albumId } }));
+    const { key } = page.links[ref];
+    const block = blocks.get(ref);
+    const body = block ? { assetIds: block.photos.map((p) => p.id) } : { albumId: ref };
+    const info = await cached(`dl:${key}:${block ? body.assetIds.join() : ''}`, 10 * 60_000, () => immich.api('POST', '/download/info', { key, body }));
     const archives = info?.archives || [];
     if (part === undefined) {
       return sendJson(res, 200, { parts: archives.map((a, i) => ({ index: i, size: a.size, count: a.assetIds.length })) });
     }
     const archive = archives[Number(part)];
     if (!archive) throw new HttpError(404, 'Not found');
-    const albums = await resolveAlbums(page, cfg, base);
-    const name = albums.find((a) => a.albumId === albumId)?.title;
+    const name = block ? block.heading || cfg.title : (await resolveAlbums(page, cfg, base)).get(ref)?.title;
     return immich.pipe(req, res, '/download/archive', {
       key,
       method: 'POST',
@@ -219,7 +221,8 @@ async function previewRoutes(req, res, url) {
   if (!m) throw new HttpError(404, 'Not found');
   const auth = await requireAuth(req);
   const page = ownedPage(m[1], auth.user);
-  return site(req, res, { page, cfg: page.draft, base: `/_folio/preview/${page.id}`, rest: m[2] || '', preview: true });
+  const edit = url.searchParams.get('edit') === '1';
+  return site(req, res, { page, cfg: page.draft, base: `/_folio/preview/${page.id}`, rest: m[2] || '', preview: true, edit });
 }
 
 // ---- editor API ---------------------------------------------------------------------
@@ -230,13 +233,16 @@ const editorView = (page) => ({
   linked: Object.keys(page.links),
 });
 
+const templateInfo = () =>
+  TEMPLATES.map((t) => ({ id: t.id, name: t.name, blurb: t.blurb, preset: t.preset, hero: t.hero, blocks: t.blocks().map((b) => b.type) }));
+
 async function editorApi(req, res, url) {
   const p = url.pathname.slice('/_folio/api'.length);
   const method = req.method;
   let m;
 
   if (p === '/meta') {
-    return sendJson(res, 200, { presets: PRESETS, fonts: FONTS, options: OPTIONS, immichUrl: config.proxy ? '/' : null });
+    return sendJson(res, 200, { presets: PRESETS, fonts: FONTS, options: OPTIONS, templates: templateInfo(), immichUrl: config.proxy ? '/' : null });
   }
 
   // Custom header requirement blocks cross-site form posts (CSRF).
@@ -287,6 +293,27 @@ async function editorApi(req, res, url) {
     const assets = await immich.albumAssets(m[1], { auth }, album.order);
     return sendJson(res, 200, { assets });
   }
+  // The signed-in user's whole timeline, one month at a time (for the photo picker).
+  if (p === '/library/buckets' && method === 'GET') {
+    const buckets = await immich.timelineBuckets({ visibility: 'timeline', order: 'desc' }, { auth });
+    return sendJson(res, 200, { buckets: buckets || [] });
+  }
+  if (p === '/library/bucket' && method === 'GET') {
+    const timeBucket = url.searchParams.get('timeBucket');
+    if (!timeBucket || timeBucket.length > 40) throw new HttpError(400, 'Missing timeBucket');
+    const assets = await immich.timelineBucket({ visibility: 'timeline', order: 'desc' }, timeBucket, { auth });
+    return sendJson(res, 200, { assets });
+  }
+  if (p === '/search' && method === 'POST') {
+    const { query } = await readJson(req);
+    if (typeof query !== 'string' || !query.trim()) throw new HttpError(400, 'Type something to search for.');
+    try {
+      return sendJson(res, 200, { assets: await immich.smartSearch(auth, query.trim().slice(0, 200)) });
+    } catch (err) {
+      if (err instanceof immich.ImmichError && err.status < 500) throw err;
+      throw new HttpError(502, 'Smart search is not available. Is Immich’s machine learning running?');
+    }
+  }
   if ((m = p.match(/^\/thumb\/([0-9a-f-]+)$/i)) && method === 'GET') {
     if (!UUID.test(m[1])) throw new HttpError(404, 'Not found');
     const size = url.searchParams.get('size') === 'preview' ? 'preview' : 'thumbnail';
@@ -303,7 +330,7 @@ async function editorApi(req, res, url) {
   if (p === '/pages' && method === 'POST') {
     const body = await readJson(req);
     const albumIds = (Array.isArray(body.albumIds) ? body.albumIds : []).filter((id) => typeof id === 'string' && UUID.test(id));
-    const page = createPage(user, { title: body.title, preset: body.preset, albumIds });
+    const page = createPage(user, { title: body.title, preset: body.preset, template: body.template, albumIds });
     const linkErrors = await ensureLinks(page, auth);
     return sendJson(res, 201, { page: editorView(page), linkErrors });
   }
@@ -324,8 +351,8 @@ async function editorApi(req, res, url) {
   }
 
   if (sub === '/draft' && method === 'PUT') {
-    const body = await readJson(req, 512 * 1024);
-    page.draft = sanitizeDraft(body.draft);
+    const body = await readJson(req, 2 * 1024 * 1024);
+    page.draft = sanitizeDraft({ ...body.draft, version: 2 });
     touch();
     const linkErrors = await ensureLinks(page, auth);
     return sendJson(res, 200, { page: editorView(page), linkErrors });
@@ -362,19 +389,21 @@ async function editorApi(req, res, url) {
   }
 
   if (sub === '/publish' && method === 'POST') {
-    const linkErrors = await ensureLinks(page, auth);
+    let linkErrors = await ensureLinks(page, auth);
     page.published = structuredClone(page.draft);
     page.publishedAt = new Date().toISOString();
     touch();
-    await pruneLinks(page, auth);
+    linkErrors = linkErrors.concat(await pruneLinks(page, auth));
     pruneImages(page);
     await syncLinkSettings(page, auth);
+    memo.clear();
     return sendJson(res, 200, { page: editorView(page), linkErrors });
   }
   if (sub === '/unpublish' && method === 'POST') {
     page.published = null;
     page.publishedAt = null;
     touch();
+    await pruneLinks(page, auth);
     return sendJson(res, 200, { page: editorView(page) });
   }
   if (sub === '/discard' && method === 'POST') {
@@ -436,13 +465,20 @@ function onError(req, res, err) {
   const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
   if (status >= 500 && !(err instanceof immich.ImmichError)) console.error(err);
   if (res.headersSent) return res.destroy();
-  const message = status >= 500 && !(err instanceof immich.ImmichError) ? 'Something went wrong' : err.message;
+  const message = status >= 500 && !(err instanceof immich.ImmichError) && !(err instanceof HttpError) ? 'Something went wrong' : err.message;
   const wantsJson = req.url.startsWith('/_folio/api/') || !(req.headers.accept || '').includes('text/html');
   if (wantsJson) return sendJson(res, status, { error: message });
   return sendHtml(res, status, renderMessage(status === 404 ? 'Not found' : 'Something went wrong', message, status));
 }
 
 load();
+// Bring pages saved by older versions up to the current format.
+for (const page of pages.all()) {
+  page.draft = sanitizeDraft(page.draft);
+  if (page.published) page.published = sanitizeDraft(page.published);
+}
+save();
+
 const server = http.createServer((req, res) => {
   handle(req, res).catch((err) => onError(req, res, err));
 });

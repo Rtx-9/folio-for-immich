@@ -51,7 +51,7 @@ Use port **2284** instead of 2283:
 - Before: `http://your-server:2283`
 - Now: `http://your-server:2284`
 
-You'll see normal Immich, with a new **Pages** item in the sidebar. Click it to make your first page.
+You'll see normal Immich, with a new **Folio** item in the sidebar. Click it to make your first page.
 
 **Using a domain (reverse proxy)?** Change where it points from `immich-server:2283` to `immich_folio:2284`. For example, in Caddy:
 
@@ -65,7 +65,7 @@ photos.example.com {
 
 | Problem | Fix |
 |---|---|
-| No **Pages** in the sidebar | Go to `/folio` directly, e.g. `http://your-server:2284/folio` |
+| No **Folio** in the sidebar | Go to `/folio` directly, e.g. `http://your-server:2284/folio` |
 | "Folio could not reach Immich" | Check that `IMMICH_URL` matches your Immich container name (usually `immich-server`) |
 | Can't add an album | You can only add albums you own |
 | Want to update Folio | Run `git -C folio pull`, then `docker compose up -d --build` again |

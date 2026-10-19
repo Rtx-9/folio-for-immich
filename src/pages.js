@@ -1,14 +1,16 @@
 // Page records and the Immich shared links that back them.
 //
-// Each album on a page gets its own private Immich shared link. Folio keeps the
-// link key on the server and streams photos through itself, so visitors only ever
-// see the Folio page, and the page's password/expiry/download rules apply.
+// Each album on a page gets its own private Immich "album" shared link, and each
+// Photos block gets an "individual" shared link holding exactly its photos.
+// Folio keeps the link keys on the server and streams photos through itself, so
+// visitors only ever see the Folio page, and the page's password/expiry/download
+// rules apply.
 import fs from 'node:fs';
 import path from 'node:path';
 import { HttpError } from './http.js';
 import * as immich from './immich.js';
 import { pages, randomId, save, uploadsDir } from './store.js';
-import { defaultDraft } from './themes.js';
+import { albumEntries, defaultDraft, photoBlocks } from './themes.js';
 
 const RESERVED = new Set(['new', 'api', 'admin', 'login', 'static', 'folio']);
 
@@ -43,10 +45,17 @@ export function uniqueSlug(base) {
   return candidate;
 }
 
-export function createPage(user, { title, preset, albumIds = [] }) {
+export function createPage(user, { title, preset, template, albumIds = [] }) {
   const now = new Date().toISOString();
-  const draft = defaultDraft(String(title || '').trim().slice(0, 120) || 'Untitled page', preset);
-  draft.albums = albumIds.map((albumId) => ({ albumId, title: '', description: '', section: '', coverAssetId: null }));
+  const draft = defaultDraft(String(title || '').trim().slice(0, 120) || 'Untitled page', preset, template);
+  if (albumIds.length) {
+    let block = draft.blocks.find((b) => b.type === 'albums');
+    if (!block) {
+      block = { id: randomId(), type: 'albums', heading: '', albums: [], albumStyle: 'cards', columns: 3, grouping: 'none', sort: 'custom', showCounts: true, showDates: true };
+      draft.blocks.push(block);
+    }
+    block.albums = albumIds.map((albumId) => ({ albumId, title: '', description: '', section: '', coverAssetId: null }));
+  }
   return pages.insert({
     id: randomId(),
     ownerId: user.id,
@@ -74,15 +83,19 @@ export const isExpired = (page) => Boolean(page.sharing.expiresAt && new Date(pa
 export const hasChanges = (page) => !page.published || JSON.stringify(page.draft) !== JSON.stringify(page.published);
 
 export function summary(page) {
+  const albums = albumEntries(page.draft);
+  const photos = photoBlocks(page.draft).flatMap((b) => b.photos);
   return {
     id: page.id,
     slug: page.slug,
     title: page.draft.title,
     subtitle: page.draft.subtitle,
     cover: page.draft.cover,
-    firstAlbum: page.draft.albums[0] || null,
+    firstAlbum: albums[0] || null,
+    firstPhoto: photos[0]?.id || null,
     theme: page.draft.theme,
-    albumCount: page.draft.albums.length,
+    albumCount: albums.length,
+    photoCount: photos.length,
     createdAt: page.createdAt,
     updatedAt: page.updatedAt,
     publishedAt: page.publishedAt,
@@ -96,36 +109,91 @@ export function summary(page) {
 }
 
 const linkDescription = (page) => `Folio · ${page.draft.title}`.slice(0, 200);
+const configs = (page) => [page.draft, page.published].filter(Boolean);
 
-// Make sure every album referenced by the draft has a working shared link.
-export async function ensureLinks(page, auth, albumIds = page.draft.albums.map((a) => a.albumId)) {
-  const errors = [];
-  for (const albumId of albumIds) {
-    if (page.links[albumId]) continue;
-    try {
-      const link = await immich.createAlbumLink(auth, albumId, {
-        description: linkDescription(page),
-        allowDownload: page.sharing.allowDownload,
-        expiresAt: page.sharing.expiresAt,
-      });
-      page.links[albumId] = { id: link.id, key: link.key };
-    } catch (err) {
-      errors.push({ albumId, message: err.message });
+// Every album ref and photos-block ref (with the union of its photos) that the
+// draft or the live page needs. A block's link must keep photos that only the
+// live copy still shows, or publishing a draft would break the live page.
+function wantedLinks(page) {
+  const albums = new Set();
+  const blocks = new Map();
+  for (const cfg of configs(page)) {
+    for (const a of albumEntries(cfg)) albums.add(a.albumId);
+    for (const b of photoBlocks(cfg)) {
+      const set = blocks.get(b.id) || new Set();
+      for (const p of b.photos) set.add(p.id);
+      blocks.set(b.id, set);
     }
   }
-  if (Object.keys(page.links).length) save();
+  return { albums, blocks };
+}
+
+const linkSettings = (page) => ({
+  description: linkDescription(page),
+  allowDownload: page.sharing.allowDownload,
+  allowUpload: false,
+  showMetadata: false,
+  ...(page.sharing.expiresAt ? { expiresAt: page.sharing.expiresAt } : {}),
+});
+
+// Make sure every album and Photos block has a working shared link.
+export async function ensureLinks(page, auth) {
+  const errors = [];
+  const { albums, blocks } = wantedLinks(page);
+
+  for (const albumId of albums) {
+    if (page.links[albumId]) continue;
+    try {
+      const link = await immich.api('POST', '/shared-links', { auth, body: { type: 'ALBUM', albumId, ...linkSettings(page) } });
+      page.links[albumId] = { id: link.id, key: link.key };
+    } catch (err) {
+      errors.push({ ref: albumId, albumId, message: err.message });
+    }
+  }
+
+  for (const [blockId, wanted] of blocks) {
+    const link = page.links[blockId];
+    try {
+      if (!link) {
+        if (!wanted.size) continue;
+        const created = await immich.api('POST', '/shared-links', { auth, body: { type: 'INDIVIDUAL', assetIds: [...wanted], ...linkSettings(page) } });
+        page.links[blockId] = { id: created.id, key: created.key, assets: [...wanted] };
+        continue;
+      }
+      const have = new Set(link.assets || []);
+      const add = [...wanted].filter((id) => !have.has(id));
+      const remove = [...have].filter((id) => !wanted.has(id));
+      if (add.length) {
+        const result = await immich.api('PUT', `/shared-links/${link.id}/assets`, { auth, body: { assetIds: add } });
+        const failed = (result || []).filter((r) => !r.success && r.error !== 'duplicate');
+        if (failed.length) errors.push({ ref: blockId, message: `${failed.length} photo(s) could not be shared (${failed[0].error})` });
+        const ok = new Set(failed.map((r) => r.assetId));
+        add.filter((id) => !ok.has(id)).forEach((id) => have.add(id));
+      }
+      if (remove.length) {
+        await immich.api('DELETE', `/shared-links/${link.id}/assets`, { auth, body: { assetIds: remove } });
+        remove.forEach((id) => have.delete(id));
+      }
+      link.assets = [...have];
+    } catch (err) {
+      errors.push({ ref: blockId, message: err.message });
+    }
+  }
+  save();
   return errors;
 }
 
-// Delete links for albums that neither the draft nor the live page uses.
+// Delete links nothing uses any more, and shrink photo links to what's still shown.
 export async function pruneLinks(page, auth) {
-  const used = new Set([...page.draft.albums, ...(page.published?.albums || [])].map((a) => a.albumId));
-  for (const [albumId, link] of Object.entries(page.links)) {
-    if (used.has(albumId)) continue;
+  const { albums, blocks } = wantedLinks(page);
+  for (const [ref, link] of Object.entries(page.links)) {
+    if (albums.has(ref)) continue;
+    if (blocks.has(ref) && blocks.get(ref).size) continue;
     await immich.deleteLink(auth, link.id).catch(() => {});
-    delete page.links[albumId];
+    delete page.links[ref];
   }
   save();
+  return ensureLinks(page, auth);
 }
 
 export async function syncLinkSettings(page, auth) {
@@ -134,11 +202,11 @@ export async function syncLinkSettings(page, auth) {
 }
 
 // A link deleted in Immich's UI makes the album 404 on the page; recreate it.
-export async function repairLink(page, auth, albumId) {
-  const old = page.links[albumId];
+export async function repairLink(page, auth, ref) {
+  const old = page.links[ref];
   if (old) await immich.deleteLink(auth, old.id).catch(() => {});
-  delete page.links[albumId];
-  return ensureLinks(page, auth, [albumId]);
+  delete page.links[ref];
+  return ensureLinks(page, auth);
 }
 
 export async function deletePage(page, auth) {
@@ -148,7 +216,7 @@ export async function deletePage(page, auth) {
 }
 
 export function pruneImages(page) {
-  const used = new Set([page.draft.cover, page.draft.logo, page.published?.cover, page.published?.logo].filter(Boolean));
+  const used = new Set(configs(page).flatMap((c) => [c.cover, c.logo]).filter(Boolean));
   page.images = page.images.filter((image) => {
     if (used.has(image)) return true;
     fs.rm(path.join(uploadsDir, image), () => {});

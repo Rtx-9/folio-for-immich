@@ -74,28 +74,57 @@ export const getMe = (auth) => api('GET', '/users/me', { auth });
 export const listAlbums = (auth) => api('GET', '/albums', { auth });
 export const getAlbum = (id, cred) => api('GET', `/albums/${encodeURIComponent(id)}`, cred);
 
+// Timeline buckets come back as columns (id[], ratio[], …); turn one into rows.
+export function normalizeBucket(page) {
+  const assets = [];
+  const ids = page?.id || [];
+  for (let i = 0; i < ids.length; i++) {
+    if (page.isTrashed?.[i]) continue;
+    assets.push({
+      id: ids[i],
+      video: page.isImage ? !page.isImage[i] : false,
+      ratio: Math.round((Number(page.ratio?.[i]) || 1.5) * 1000) / 1000,
+      duration: page.duration?.[i] ?? null,
+      date: page.fileCreatedAt?.[i] ?? null,
+    });
+  }
+  return assets;
+}
+
+export const timelineBuckets = (query, cred) => api('GET', '/timeline/buckets', { ...cred, query });
+export const timelineBucket = async (query, timeBucket, cred) =>
+  normalizeBucket(await api('GET', '/timeline/bucket', { ...cred, query: { ...query, timeBucket } }));
+
 // Album responses no longer embed assets in Immich v3, so walk the timeline.
 export async function albumAssets(albumId, cred, order = 'desc') {
   const query = { albumId, order: order === 'asc' ? 'asc' : 'desc' };
-  const buckets = await api('GET', '/timeline/buckets', { ...cred, query });
-  const pages = await mapLimit(buckets || [], 4, (b) =>
-    api('GET', '/timeline/bucket', { ...cred, query: { ...query, timeBucket: b.timeBucket } }),
-  );
-  const assets = [];
-  for (const page of pages) {
-    const ids = page?.id || [];
-    for (let i = 0; i < ids.length; i++) {
-      if (page.isTrashed?.[i]) continue;
-      assets.push({
-        id: ids[i],
-        video: page.isImage ? !page.isImage[i] : false,
-        ratio: Math.round((Number(page.ratio?.[i]) || 1.5) * 1000) / 1000,
-        duration: page.duration?.[i] ?? null,
-        date: page.fileCreatedAt?.[i] ?? null,
-      });
-    }
+  const buckets = await timelineBuckets(query, cred);
+  const pages = await mapLimit(buckets || [], 4, (b) => timelineBucket(query, b.timeBucket, cred));
+  return pages.flat();
+}
+
+// AssetResponseDto (search results) → the same row shape as the timeline.
+export function normalizeAsset(a) {
+  let w = a.width || a.exifInfo?.exifImageWidth;
+  let h = a.height || a.exifInfo?.exifImageHeight;
+  if (!a.width && [5, 6, 7, 8].includes(Number(a.exifInfo?.orientation))) [w, h] = [h, w];
+  let duration = a.duration ?? null;
+  if (typeof duration === 'string') {
+    const [hh, mm, ss] = duration.split(':').map(Number);
+    duration = Number.isFinite(ss) ? Math.round(((hh * 60 + mm) * 60 + ss) * 1000) || null : null;
   }
-  return assets;
+  return {
+    id: a.id,
+    video: a.type === 'VIDEO',
+    ratio: w && h ? Math.round((w / h) * 1000) / 1000 : 1.5,
+    duration,
+    date: a.fileCreatedAt || a.localDateTime || null,
+  };
+}
+
+export async function smartSearch(auth, query) {
+  const result = await api('POST', '/search/smart', { auth, body: { query, size: 120 } });
+  return (result?.assets?.items || []).map(normalizeAsset);
 }
 
 async function mapLimit(items, limit, fn) {
@@ -112,20 +141,6 @@ async function mapLimit(items, limit, fn) {
 }
 
 // ---- shared links -------------------------------------------------------------
-
-export const createAlbumLink = (auth, albumId, { description, allowDownload, expiresAt }) =>
-  api('POST', '/shared-links', {
-    auth,
-    body: {
-      type: 'ALBUM',
-      albumId,
-      description,
-      allowDownload,
-      allowUpload: false,
-      showMetadata: false,
-      ...(expiresAt ? { expiresAt } : {}),
-    },
-  });
 
 export const updateLink = (auth, id, patch) => api('PATCH', `/shared-links/${encodeURIComponent(id)}`, { auth, body: patch });
 export const deleteLink = (auth, id) => api('DELETE', `/shared-links/${encodeURIComponent(id)}`, { auth });

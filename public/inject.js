@@ -1,9 +1,9 @@
-// Injected into Immich's web app by the Folio proxy: adds a "Pages" item to the
+// Injected into Immich's web app by the Folio proxy: adds a "Folio" item to the
 // sidebar, right after "Sharing". It clones Immich's own link so it inherits the
 // current look, and quietly does nothing if Immich's markup ever changes.
 (() => {
   const ID = 'folio-sidebar-link';
-  const ICON = 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 5v9h16V9H4zm2 2h6v5H6v-5zm8 0h4v2h-4v-2zm0 3h4v2h-4v-2z';
+  const ICON = 'M3 5.4 11 4v16l-8-1.4V5.4zm10-1.4 8 1.4v13.2L13 20V4zm1.4 13.4 2.6-4.2 1.5 2 .9-1.1 1.2 1.9-6.2 1.4zm4.2-9.6a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z';
 
   function textNodes(el) {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -28,14 +28,17 @@
     link.href = '/folio';
     link.setAttribute('data-sveltekit-reload', '');
     link.removeAttribute('aria-current');
-    link.setAttribute('title', 'Pages');
+    link.setAttribute('title', 'Folio');
     for (const node of clone.querySelectorAll('[aria-current]')) node.removeAttribute('aria-current');
     const labels = textNodes(clone);
     if (labels.length) {
-      labels[0].nodeValue = labels[0].nodeValue.replace(/\S.*\S|\S/, 'Pages');
+      labels[0].nodeValue = labels[0].nodeValue.replace(/\S.*\S|\S/, 'Folio');
       labels.slice(1).forEach((n) => (n.nodeValue = ''));
     }
-    clone.querySelectorAll('svg path').forEach((p) => p.setAttribute('d', ICON));
+    clone.querySelectorAll('svg path').forEach((p) => {
+      p.setAttribute('d', ICON);
+      p.setAttribute('fill-rule', 'evenodd');
+    });
     item.after(clone);
   }
 

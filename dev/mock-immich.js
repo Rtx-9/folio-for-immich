@@ -69,15 +69,38 @@ const readBody = (req) => new Promise((r) => {
   req.on('end', () => r(chunks.length ? JSON.parse(Buffer.concat(chunks)) : {}));
 });
 
+// Album-level access: an album link for that album, or the signed-in user.
 function access(req, url, albumId) {
   const key = url.searchParams.get('key');
   if (key) {
     const link = linkByKey(key);
     if (!link || (link.expiresAt && new Date(link.expiresAt) < new Date())) return false;
-    return !albumId || link.albumId === albumId;
+    return link.type === 'ALBUM' && (!albumId || link.albumId === albumId);
   }
   return authed(req);
 }
+
+// Asset-level access: also allows individual links that contain the asset.
+function assetAccess(req, url, hit) {
+  const key = url.searchParams.get('key');
+  if (key) {
+    const link = linkByKey(key);
+    if (!link || (link.expiresAt && new Date(link.expiresAt) < new Date())) return false;
+    return link.type === 'ALBUM' ? link.albumId === hit.album.id : link.assetIds.includes(hit.asset.id);
+  }
+  return authed(req);
+}
+
+const myAssets = () => ALBUMS.filter((a) => a.owner === me).flatMap((a) => a.assets);
+const columns = (items) => ({
+  id: items.map((a) => a.id),
+  ratio: items.map((a) => a.ratio),
+  isImage: items.map(() => true),
+  isTrashed: items.map(() => false),
+  duration: items.map(() => null),
+  fileCreatedAt: items.map((a) => a.date),
+  thumbhash: items.map(() => null),
+});
 
 const albumDto = (a) => ({
   id: a.id,
@@ -159,12 +182,40 @@ http
       if (p === '/api/shared-links' && req.method === 'POST') {
         if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
         const body = await readBody(req);
+        const base = { id: crypto.randomUUID(), key: crypto.randomBytes(24).toString('base64url'), createdAt: new Date().toISOString() };
+        if (body.type === 'INDIVIDUAL') {
+          const ids = body.assetIds || [];
+          if (!ids.length || ids.some((id) => assetIndex.get(id)?.album.owner !== me)) return json(res, 400, { message: 'Not found or no sharedLink.create access' });
+          const link = { ...base, ...body, assetIds: [...ids] };
+          links.set(link.id, link);
+          console.log(`[mock] created individual link with ${ids.length} photos`);
+          return json(res, 201, link);
+        }
         const album = ALBUMS.find((a) => a.id === body.albumId);
         if (!album || album.owner !== me) return json(res, 400, { message: 'Not found or no album.share access' });
-        const link = { id: crypto.randomUUID(), key: crypto.randomBytes(24).toString('base64url'), type: 'ALBUM', ...body, createdAt: new Date().toISOString() };
+        const link = { ...base, type: 'ALBUM', ...body };
         links.set(link.id, link);
         console.log(`[mock] created shared link for "${album.name}"`);
         return json(res, 201, link);
+      }
+      if ((m = p.match(/^\/api\/shared-links\/([^/]+)\/assets$/))) {
+        if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
+        const link = links.get(m[1]);
+        if (!link || link.type !== 'INDIVIDUAL') return json(res, 400, { message: 'Invalid shared link type' });
+        const { assetIds = [] } = await readBody(req);
+        const result = assetIds.map((assetId) => {
+          const has = link.assetIds.includes(assetId);
+          if (req.method === 'PUT') {
+            if (has) return { assetId, success: false, error: 'duplicate' };
+            if (assetIndex.get(assetId)?.album.owner !== me) return { assetId, success: false, error: 'no_permission' };
+            link.assetIds.push(assetId);
+            return { assetId, success: true };
+          }
+          if (!has) return { assetId, success: false, error: 'not_found' };
+          link.assetIds = link.assetIds.filter((id) => id !== assetId);
+          return { assetId, success: true };
+        });
+        return json(res, 200, result);
       }
       if ((m = p.match(/^\/api\/shared-links\/([^/]+)$/))) {
         if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
@@ -181,31 +232,41 @@ http
       }
 
       if (p === '/api/timeline/buckets' || p === '/api/timeline/bucket') {
-        const album = ALBUMS.find((a) => a.id === url.searchParams.get('albumId'));
-        if (!album || !access(req, url, album.id)) return json(res, 401, { message: 'Not allowed' });
+        const albumId = url.searchParams.get('albumId');
+        let source;
+        if (albumId) {
+          const album = ALBUMS.find((a) => a.id === albumId);
+          if (!album || !access(req, url, album.id)) return json(res, 401, { message: 'Not allowed' });
+          source = album.assets;
+        } else {
+          if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
+          source = [...myAssets()].sort((a, b) => a.date.localeCompare(b.date));
+        }
         const desc = url.searchParams.get('order') === 'desc';
-        const sorted = desc ? [...album.assets].reverse() : album.assets;
+        const sorted = desc ? [...source].reverse() : source;
         const bucketOf = (a) => `${a.date.slice(0, 7)}-01T00:00:00.000Z`;
         if (p.endsWith('buckets')) {
           const counts = new Map();
           for (const a of sorted) counts.set(bucketOf(a), (counts.get(bucketOf(a)) || 0) + 1);
           return json(res, 200, [...counts].map(([timeBucket, count]) => ({ timeBucket, count })));
         }
-        const items = sorted.filter((a) => bucketOf(a) === url.searchParams.get('timeBucket'));
-        return json(res, 200, {
-          id: items.map((a) => a.id),
-          ratio: items.map((a) => a.ratio),
-          isImage: items.map(() => true),
-          isTrashed: items.map(() => false),
-          duration: items.map(() => null),
-          fileCreatedAt: items.map((a) => a.date),
-          thumbhash: items.map(() => null),
-        });
+        return json(res, 200, columns(sorted.filter((a) => bucketOf(a) === url.searchParams.get('timeBucket'))));
+      }
+
+      if (p === '/api/search/smart' && req.method === 'POST') {
+        if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
+        const { query = '' } = await readBody(req);
+        const seed = [...query].reduce((s, c) => s + c.charCodeAt(0), 0);
+        const items = myAssets()
+          .filter((_, i) => (i + seed) % 4 === 0)
+          .slice(0, 24)
+          .map((a) => ({ id: a.id, type: 'IMAGE', width: Math.round(a.ratio * 1000), height: 1000, fileCreatedAt: a.date, duration: null }));
+        return json(res, 200, { albums: { items: [], total: 0, count: 0 }, assets: { items, total: items.length, count: items.length, nextPage: null } });
       }
 
       if ((m = p.match(/^\/api\/assets\/([^/]+)\/(thumbnail|original|video\/playback)$/))) {
         const hit = assetIndex.get(m[1]);
-        if (!hit || !access(req, url, hit.album.id)) return json(res, 401, { message: 'Not allowed' });
+        if (!hit || !assetAccess(req, url, hit)) return json(res, 401, { message: 'Not allowed' });
         if (m[2] === 'video/playback') return json(res, 404, { message: 'No video' });
         const size = m[2] === 'original' ? 'original' : url.searchParams.get('size') || 'thumbnail';
         const img = await image(hit.asset, size);
@@ -217,9 +278,17 @@ http
 
       if (p === '/api/download/info' && req.method === 'POST') {
         const body = await readBody(req);
-        const album = ALBUMS.find((a) => a.id === body.albumId);
-        if (!album || !access(req, url, album.id)) return json(res, 401, { message: 'Not allowed' });
-        return json(res, 200, { totalSize: album.assets.length * 4e6, archives: [{ size: album.assets.length * 4e6, assetIds: album.assets.map((a) => a.id) }] });
+        let ids;
+        if (body.assetIds) {
+          const hits = body.assetIds.map((id) => assetIndex.get(id));
+          if (hits.some((hit) => !hit || !assetAccess(req, url, hit))) return json(res, 401, { message: 'Not allowed' });
+          ids = body.assetIds;
+        } else {
+          const album = ALBUMS.find((a) => a.id === body.albumId);
+          if (!album || !access(req, url, album.id)) return json(res, 401, { message: 'Not allowed' });
+          ids = album.assets.map((a) => a.id);
+        }
+        return json(res, 200, { totalSize: ids.length * 4e6, archives: [{ size: ids.length * 4e6, assetIds: ids }] });
       }
       if (p === '/api/download/archive' && req.method === 'POST') {
         const body = Buffer.from('PK\u0005\u0006' + '\0'.repeat(18), 'latin1'); // an empty zip
@@ -245,7 +314,7 @@ http
       res.end(
         shell(
           authed(req)
-            ? `<h1>Photos</h1><p>Mock Immich. The “Pages” link in the sidebar was added by Folio.</p><p><a class="btn" href="/folio" data-sveltekit-reload>Open Pages</a></p>`
+            ? `<h1>Photos</h1><p>Mock Immich. The “Folio” link in the sidebar was added by Folio.</p><p><a class="btn" href="/folio" data-sveltekit-reload>Open Folio</a></p>`
             : `<h1>Welcome</h1><p><a class="btn" href="/auth/login">Sign in</a></p>`,
         ),
       );
