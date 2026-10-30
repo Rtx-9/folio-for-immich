@@ -43,6 +43,7 @@ import {
 } from './pages.js';
 import * as proxy from './proxy.js';
 import { dateLabel, renderAlbum, renderIndex, renderLocked, renderMessage } from './render.js';
+import { saipaApi } from './saipa/index.js';
 import { load, pages, save, uploadsDir } from './store.js';
 import { albumEntries, FONTS, OPTIONS, photoBlocks, PRESETS, sanitizeDraft, TEMPLATES } from './themes.js';
 
@@ -237,10 +238,15 @@ const editorView = (page) => ({
 const templateInfo = () =>
   TEMPLATES.map((t) => ({ id: t.id, name: t.name, blurb: t.blurb, preset: t.preset, hero: t.hero, blocks: t.blocks().map((b) => b.type) }));
 
-// The editor page, with asset URLs pinned to this version so browsers never mix old and new files.
-let editorCache;
-const editorHtml = () =>
-  (editorCache ??= fs.readFileSync(path.join(STATIC, 'editor.html'), 'utf8').replaceAll('__VERSION__', encodeURIComponent(version)));
+// App pages (Folio editor, SAIPA), with asset URLs pinned to this version so
+// browsers never mix old and new files.
+const htmlCache = new Map();
+function appHtml(name) {
+  if (!htmlCache.has(name)) {
+    htmlCache.set(name, fs.readFileSync(path.join(STATIC, name), 'utf8').replaceAll('__VERSION__', encodeURIComponent(version)));
+  }
+  return htmlCache.get(name);
+}
 
 async function editorApi(req, res, url) {
   res.setHeader('x-folio-version', version);
@@ -274,6 +280,8 @@ async function editorApi(req, res, url) {
 
   const auth = await requireAuth(req);
   const { user } = auth;
+
+  if (p === '/saipa' || p.startsWith('/saipa/')) return saipaApi(req, res, url, p.slice('/saipa'.length), auth);
 
   if (p === '/albums' && method === 'GET') {
     const albums = await immich.listAlbums(auth);
@@ -448,7 +456,8 @@ async function handle(req, res) {
   const url = new URL(req.url, 'http://folio.local');
   const p = url.pathname;
 
-  if (p === '/folio' || p.startsWith('/folio/')) return sendHtml(res, 200, editorHtml());
+  if (p === '/folio' || p.startsWith('/folio/')) return sendHtml(res, 200, appHtml('editor.html'));
+  if (p === '/saipa' || p.startsWith('/saipa/')) return sendHtml(res, 200, appHtml('saipa.html'));
   if (p === '/_folio/inject.js') return serveFile(req, res, path.join(STATIC, 'inject.js'));
   if (p.startsWith('/_folio/static/')) {
     const file = path.join(STATIC, path.normalize(p.slice('/_folio/static/'.length)).replace(/^(\.\.[/\\])+/, ''));
