@@ -1,5 +1,5 @@
-// Injected into Immich's web app by the Folio proxy: adds "Folio" and "SAIPA"
-// items to the sidebar, right after "Sharing". They are clones of Immich's own
+// Injected into Immich's web app by the Folio proxy: adds "Folio" (and, when
+// RINKSIDE_URL is set, "RinkSide") to the sidebar, right after "Sharing". They are clones of Immich's own
 // link so they inherit the current look, and nothing happens if Immich's markup
 // ever changes.
 (() => {
@@ -11,12 +11,12 @@
       icon: 'M3 5.4 11 4v16l-8-1.4V5.4zm10-1.4 8 1.4v13.2L13 20V4zm1.4 13.4 2.6-4.2 1.5 2 .9-1.1 1.2 1.9-6.2 1.4zm4.2-9.6a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z',
     },
     {
-      id: 'saipa-sidebar-link',
-      href: '/saipa',
-      label: 'SAIPA',
+      id: 'rinkside-sidebar-link',
+      href: '__RINKSIDE_URL__',
+      label: 'RinkSide',
       icon: 'M16.2 1.6 18.4 2.9 10.5 17.1c-.3.5-.8.7-1.3.7H4a1.5 1.5 0 0 1-1.5-1.5v-.6A1.5 1.5 0 0 1 4 14.2h4.9zM14 17.6c0-1 1.8-1.8 4-1.8s4 .8 4 1.8v1.6c0 1-1.8 1.8-4 1.8s-4-.8-4-1.8z',
     },
-  ];
+  ].filter((item) => item.href);
 
   function textNodes(el) {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -47,6 +47,7 @@
       const link = clone.matches('a') ? clone : clone.querySelector('a');
       link.href = item.href;
       link.setAttribute('data-sveltekit-reload', '');
+      if (/^https?:/.test(item.href)) link.target = '_blank';
       link.removeAttribute('aria-current');
       link.setAttribute('title', item.label);
       for (const node of clone.querySelectorAll('[aria-current]')) node.removeAttribute('aria-current');

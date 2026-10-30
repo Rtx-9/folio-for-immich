@@ -50,116 +50,14 @@ const ALBUMS = [
   }));
   return { ...a, id, assets };
 });
-// Uploaded photos live in Immich's own storage, in folders with meaningless names.
-for (const album of ALBUMS) for (const a of album.assets) a.path = `/data/upload/${album.owner.id}/${a.id.slice(0, 2)}/${a.id.slice(2, 4)}/${a.id}.jpg`;
-
-// A hockey folder for SAIPA, shot at real SaiPa games (local Finnish time), plus a
-// training day that isn't a game. Most photos carry IPTC, some only XMP, some nothing.
-const HOCKEY_SHOOTS = [
-  { local: '2025-09-09T18:10', minutes: 170, n: 12, folder: '2025-26/2025-09-09 SaiPa-KalPa', opp: 'KalPa', city: 'Lappeenranta', arena: 'Lappeenrannan jäähalli' },
-  { local: '2025-09-13T16:45', minutes: 150, n: 8, folder: '2025-26/2025-09-13 KooKoo-SaiPa', opp: 'KooKoo', city: 'Kouvola', arena: 'Kouvolan jäähalli' },
-  { local: '2026-03-28T16:40', minutes: 190, n: 10, folder: '2025-26/2026-03-28 SaiPa-Ässät', opp: 'Ässät', city: 'Lappeenranta', arena: 'Lappeenrannan jäähalli' },
-  { local: '2026-08-27T17:45', minutes: 150, n: 7, folder: '2026-27/2026-08-27 SaiPa-Jukurit', opp: 'Jukurit', city: 'Lappeenranta', arena: 'Lappeenrannan jäähalli' },
-  { local: '2026-09-01T18:05', minutes: 165, n: 10, folder: '2026-27/2026-09-01 SaiPa-Tappara', opp: 'Tappara', city: 'Lappeenranta', arena: 'Lappeenrannan jäähalli' },
-  { local: '2026-09-05T11:00', minutes: 90, n: 6, folder: '2026-27/Treenit', opp: null, city: 'Lappeenranta', arena: 'Lappeenrannan jäähalli' },
-  { local: '2026-10-20T18:00', minutes: 180, n: 14, folder: '2026-27/2026-10-20 SaiPa-Kärpät', opp: 'Kärpät', city: 'Lappeenranta', arena: 'Lappeenrannan jäähalli' },
-];
-const CAPTIONS = [
-  (o) => `Kari Piiroinen torjuu maalin SaiPa–${o} -pelissä`,
-  (o) => `Samuli Niinisaari juhlii maaliaan ${o}a vastaan`,
-  () => 'SaiPan kannattajat tunnelmissa päätykatsomossa',
-  () => 'Maalivahti Kari Piiroinen venyy torjuntaan',
-  (o) => `Patrik Siikanen laukoo, ${o}n puolustus taklaa`,
-  () => 'Aloitus keskialueella toisessa erässä',
-  (o) => `SaiPa kiittää yleisöä ottelun jälkeen. SaiPa–${o}`,
-  () => 'Petrus Palmu ja Santeri Airola tuulettavat',
-];
-const TRAINING = ['Aamuharjoitukset Kisapuiston hallissa', 'Valmentaja ohjeistaa', 'Kari Piiroinen maalivahtiharjoituksissa'];
-// The hockey photos come from an external library (real folder names) and are
-// also collected in an album, so all three SAIPA sources can be tested.
-const hockey = { name: 'SaiPa 2025–2027', owner: me, desc: '', id: uuid('hockey-folder'), assets: [] };
-HOCKEY_SHOOTS.forEach((shoot, si) => {
-  const rand = rng(100 + si);
-  const start = Date.parse(`${shoot.local}:00Z`);
-  for (let i = 0; i < shoot.n; i++) {
-    const local = new Date(start + (shoot.minutes * 60e3 * i) / Math.max(1, shoot.n - 1)).toISOString();
-    const caption = shoot.opp ? CAPTIONS[(i + si) % CAPTIONS.length](shoot.opp) : TRAINING[i % TRAINING.length];
-    const kind = i % 7 === 3 ? 'none' : i % 7 === 5 ? 'xmp' : 'iptc';
-    const n = 4400 + si * 100 + i;
-    hockey.assets.push({
-      id: uuid(`hockey-${si}-${i}`),
-      picsum: PICSUM[(si * 31 + i * 11 + 5) % PICSUM.length],
-      ratio: [1.5, 1.5, 0.667, 1.5, 1.778][Math.floor(rand() * 5)],
-      local,
-      // Finnish summer time: UTC+3 (close enough for a mock).
-      date: new Date(Date.parse(local) - 3 * 3600e3).toISOString(),
-      path: `/mnt/photos/Hockey/${shoot.folder}/IMG_${n}.jpg`,
-      meta:
-        kind === 'none'
-          ? null
-          : {
-              kind,
-              caption,
-              headline: shoot.opp ? `SaiPa–${shoot.opp}` : 'SaiPan harjoitukset',
-              keywords: ['SaiPa', 'Liiga', 'jääkiekko', ...(shoot.opp ? [shoot.opp] : ['harjoitukset']), ...(caption.match(/Kari Piiroinen|Samuli Niinisaari|Patrik Siikanen|Petrus Palmu/g) || [])],
-              byline: 'Wisp / Alluvisuals',
-              credit: 'Alluvisuals',
-              copyright: '© 2026 Alluvisuals',
-              city: shoot.city,
-              sublocation: shoot.arena,
-              country: 'Suomi',
-            },
-    });
-  }
-});
-ALBUMS.push(hockey);
 const assetIndex = new Map(ALBUMS.flatMap((album) => album.assets.map((asset) => [asset.id, { asset, album }])));
-const folderOf = (a) => a.path.replace(/\/[^/]*$/, '');
-
-// IPTC (APP13, UTF-8) or XMP (APP1) metadata, inserted right after the JPEG's SOI marker.
-function withMetadata(jpeg, meta) {
-  if (!meta || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return jpeg;
-  const u16 = (n) => Buffer.from([n >> 8, n & 255]);
-  let segment;
-  if (meta.kind === 'iptc') {
-    const fields = [
-      [105, meta.headline],
-      [120, meta.caption],
-      ...meta.keywords.map((k) => [25, k]),
-      [80, meta.byline],
-      [110, meta.credit],
-      [116, meta.copyright],
-      [90, meta.city],
-      [92, meta.sublocation],
-      [101, meta.country],
-    ];
-    const iim = Buffer.concat([
-      Buffer.from([0x1c, 1, 90, 0, 3, 0x1b, 0x25, 0x47]), // coded character set: UTF-8
-      ...fields.map(([ds, v]) => {
-        const d = Buffer.from(v, 'utf8');
-        return Buffer.concat([Buffer.from([0x1c, 2, ds]), u16(d.length), d]);
-      }),
-    ]);
-    const size = Buffer.alloc(4);
-    size.writeUInt32BE(iim.length);
-    const payload = Buffer.concat([Buffer.from('Photoshop 3.0\0', 'latin1'), Buffer.from('8BIM', 'latin1'), Buffer.from([4, 4, 0, 0]), size, iim, iim.length % 2 ? Buffer.from([0]) : Buffer.alloc(0)]);
-    segment = Buffer.concat([Buffer.from([0xff, 0xed]), u16(payload.length + 2), payload]);
-  } else {
-    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const xml = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/" photoshop:City="${esc(meta.city)}" photoshop:Credit="${esc(meta.credit)}"><dc:description><rdf:Alt><rdf:li xml:lang="x-default">${esc(meta.caption)}</rdf:li></rdf:Alt></dc:description><dc:subject><rdf:Bag>${meta.keywords.map((k) => `<rdf:li>${esc(k)}</rdf:li>`).join('')}</rdf:Bag></dc:subject><dc:creator><rdf:Seq><rdf:li>${esc(meta.byline)}</rdf:li></rdf:Seq></dc:creator></rdf:Description></rdf:RDF></x:xmpmeta>`;
-    const payload = Buffer.concat([Buffer.from('http://ns.adobe.com/xap/1.0/\0', 'latin1'), Buffer.from(xml, 'utf8')]);
-    segment = Buffer.concat([Buffer.from([0xff, 0xe1]), u16(payload.length + 2), payload]);
-  }
-  return Buffer.concat([jpeg.subarray(0, 2), segment, jpeg.subarray(2)]);
-}
 
 const assetDto = (a, album) => ({
   id: a.id,
   type: 'IMAGE',
-  originalFileName: a.path.split('/').pop(),
-  originalPath: a.path,
+  originalFileName: `IMG_${a.id.slice(0, 6)}.jpg`,
   originalMimeType: 'image/jpeg',
-  localDateTime: a.local ? `${a.local.slice(0, 19)}.000Z` : a.date,
+  localDateTime: a.date,
   fileCreatedAt: a.date,
   width: Math.round(a.ratio * 4000),
   height: 4000,
@@ -371,41 +269,6 @@ http
         return json(res, 200, columns(sorted.filter((a) => bucketOf(a) === url.searchParams.get('timeBucket'))));
       }
 
-      if (p === '/api/view/folder/unique-paths') {
-        if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
-        return json(res, 200, [...new Set([...assetIndex.values()].filter((h) => h.album.owner === me).map((h) => folderOf(h.asset)))].sort());
-      }
-      if (p === '/api/view/folder') {
-        if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
-        const folder = url.searchParams.get('path');
-        return json(res, 200, [...assetIndex.values()].filter((h) => h.album.owner === me && folderOf(h.asset) === folder).map((h) => assetDto(h.asset, h.album)));
-      }
-      if ((m = p.match(/^\/api\/assets\/([0-9a-f-]{36})$/)) && req.method === 'GET') {
-        const hit = assetIndex.get(m[1]);
-        if (!hit || !authed(req)) return json(res, 400, { message: 'Not found or no asset.read access' });
-        return json(res, 200, {
-          ...assetDto(hit.asset, hit.album),
-          exifInfo: { make: 'Canon', model: 'EOS R3', lensModel: 'RF70-200mm F2.8 L IS USM', focalLength: 135, fNumber: 2.8, exposureTime: '1/1000', iso: 6400, exifImageWidth: Math.round(hit.asset.ratio * 4000), exifImageHeight: 4000, fileSizeInByte: 9_800_000, description: hit.asset.meta?.caption || null },
-        });
-      }
-
-      if (p === '/api/search/metadata' && req.method === 'POST') {
-        if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
-        const body = await readBody(req);
-        const after = body.takenAfter ? Date.parse(body.takenAfter) : -Infinity;
-        const before = body.takenBefore ? Date.parse(body.takenBefore) : Infinity;
-        const hits = [...assetIndex.values()]
-          .filter((hit) => hit.album.owner === me)
-          .filter((hit) => !body.albumIds?.length || body.albumIds.includes(hit.album.id))
-          .filter((hit) => Date.parse(hit.asset.date) >= after && Date.parse(hit.asset.date) <= before)
-          .sort((x, y) => y.asset.date.localeCompare(x.asset.date));
-        const size = Math.min(1000, body.size || 250);
-        const page = body.page || 1;
-        const items = hits.slice((page - 1) * size, page * size).map((hit) => assetDto(hit.asset, hit.album));
-        const nextPage = page * size < hits.length ? String(page + 1) : null;
-        return json(res, 200, { albums: { items: [], total: 0, count: 0 }, assets: { items, total: hits.length, count: items.length, nextPage } });
-      }
-
       if (p === '/api/search/smart' && req.method === 'POST') {
         if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
         const { query = '' } = await readBody(req);
@@ -423,7 +286,6 @@ http
         if (m[2] === 'video/playback') return json(res, 404, { message: 'No video' });
         const size = m[2] === 'original' ? 'original' : url.searchParams.get('size') || 'thumbnail';
         let img = await image(hit.asset, size);
-        if (m[2] === 'original' && hit.asset.meta) img = { ...img, body: withMetadata(img.body, hit.asset.meta) };
         const headers = { 'content-type': img.type, 'content-length': img.body.length, 'cache-control': 'private, max-age=86400' };
         if (m[2] === 'original') headers['content-disposition'] = `attachment; filename="IMG_${hit.asset.id.slice(0, 6)}.jpg"`;
         res.writeHead(200, headers);

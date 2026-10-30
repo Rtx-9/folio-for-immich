@@ -19,7 +19,9 @@ export const config = {
   publicUrl: (process.env.PUBLIC_URL || '').replace(/\/+$/, ''),
   // Forward everything that is not a Folio route to Immich, so Folio can sit in front of it.
   proxy: bool(process.env.FOLIO_PROXY, true),
-  // Add a "Pages" entry to Immich's sidebar when proxying.
+  // Add a "Folio" entry to Immich's sidebar when proxying.
   inject: bool(process.env.FOLIO_INJECT, true),
+  // Optional extra sidebar entry pointing at RinkSide (e.g. http://localhost:2285 on your laptop).
+  rinksideUrl: (process.env.RINKSIDE_URL || '').trim(),
   maxUploadBytes: (Number(process.env.FOLIO_MAX_UPLOAD_MB) || 15) * 1024 * 1024,
 };

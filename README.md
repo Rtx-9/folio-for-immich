@@ -34,31 +34,11 @@ clients, guests or family.
 - **Draft → Publish** with a live desktop/tablet/phone preview. Custom page address
   (`/p/your-name`), link previews for WhatsApp/iMessage, and a view counter.
 
-## SAIPA: your hockey archive, sorted by game
+## RinkSide link (optional)
 
-<img src="public/saipa-icon.svg" width="40" align="left" alt="">
-
-A second sidebar item, **SAIPA**, turns your hockey photos into an archive sorted by
-**SaiPa game** instead of by day. On first open you choose where the photos are:
-
-- **An album** (recommended): put your hockey photos in one or more Immich albums, e.g. “SaiPa”.
-- **Every game photo**: no setup; any photo in your library taken during a SaiPa game.
-- **A folder**: for external libraries. Photos uploaded to Immich live in its own storage
-  (`upload/<user id>/ab/cd`) whose folder names mean nothing, so those are hidden.
-
-- Each photo's camera time is matched to SaiPa's schedule from **Liiga's game feed**
-  (regular season, playoffs and preseason). You get sections like
-  **SaiPa – Kärpät 2–1 VL · ti 20.10.2026 klo 18.30**, newest first. Collapse any game
-  (or all of them) to scroll quickly. Photos taken outside a game get their own day sections.
-- Opening a photo shows its **IPTC info**: caption, headline, keywords, photographer,
-  credit, copyright, location and more, read straight from the JPEG (IPTC and XMP). It
-  also shows the game card with the scorers and the camera settings. Photos without IPTC
-  say so and are still findable.
-- **Forgiving search** over captions, keywords, names, opponents, arenas and dates.
-  “Kari torjunta” finds *“Kari Piiroinen torjuu maalin SaiPa–Kärpät-pelissä”*. It handles
-  Finnish word forms, missing ä/ö (“karpat”) and small typos (“Niinisari”).
-- Camera clock off by an hour? Set a clock fix in settings (⚙). The first sync reads the
-  start of every JPEG (about 200 KB each); after that only new photos.
+[RinkSide](https://github.com/Rtx-9/rinkside), the hockey photo culling tool, runs on your
+laptop so it works at the rink without Wi-Fi. Set `RINKSIDE_URL` (for example
+`http://localhost:2285`) and Folio adds a **RinkSide** item to Immich's sidebar that opens it.
 
 ## How it works
 
@@ -69,9 +49,8 @@ browser ──► Folio :2284 ──► Immich :2283
               │
               ├─ /folio        the page editor (uses your Immich session)
               ├─ /p/<slug>     public pages
-              ├─ /saipa        the SAIPA hockey archive
               └─ everything else is passed through to Immich unchanged
-                 (+ a tiny script that adds "Folio" and "SAIPA" to the sidebar)
+                 (+ a tiny script that adds "Folio" to the sidebar)
 ```
 
 For each album on a page, Folio creates a private Immich album link, and for each Photos
@@ -97,8 +76,8 @@ UI, so a companion service like this is the way to extend the web app.
 Folio has to be on the **same domain** as Immich. That's how it reuses your Immich
 login and adds the sidebar link.
 
-**Alternative (keep your proxy pointing at Immich):** route only `/p/*`, `/folio*`,
-`/saipa*` and `/_folio/*` to Folio. Everything still works except the sidebar link. Open
+**Alternative (keep your proxy pointing at Immich):** route only `/p/*`, `/folio*`
+and `/_folio/*` to Folio. Everything still works except the sidebar link. Open
 `https://your-domain/folio` directly.
 
 ### Settings
@@ -110,7 +89,8 @@ login and adds the sidebar link.
 | `FOLIO_DATA` | `./data` | Pages (`folio.json`) and uploaded logos/covers |
 | `PUBLIC_URL` | (from request) | e.g. `https://photos.example.com`, for link previews |
 | `FOLIO_PROXY` | `true` | Forward non-Folio requests to Immich |
-| `FOLIO_INJECT` | `true` | Add "Folio" and "SAIPA" to Immich's sidebar |
+| `FOLIO_INJECT` | `true` | Add "Folio" to Immich's sidebar |
+| `RINKSIDE_URL` | (none) | Also add a "RinkSide" sidebar item linking here |
 | `FOLIO_MAX_UPLOAD_MB` | `15` | Max logo/cover upload size |
 
 Back up `FOLIO_DATA` together with Immich.
@@ -126,9 +106,6 @@ Back up `FOLIO_DATA` together with Immich.
   *System serif* if you'd rather avoid that.
 - The sidebar link clones Immich's own "Sharing" item. If a future Immich release
   changes its markup, the link may disappear (nothing breaks; use `/folio`).
-- SAIPA needs internet access to `liiga.fi` for the schedule (cached in `FOLIO_DATA/saipa`).
-  It matches photos by the camera's local clock time, so keep the camera on Finnish time
-  (or use the clock fix).
 - Built against the Immich **v3.3** API (album assets come from the timeline
   endpoints, since v3 album responses no longer include assets).
 
@@ -140,7 +117,6 @@ No build step and no npm dependencies. Node 20+.
 node dev/mock-immich.js     # fake Immich with sample albums on :2283
 node src/server.js          # Folio on :2284
 node dev/smoke-test.mjs     # end-to-end checks (password, expiry, downloads, CSRF…)
-node dev/saipa-test.mjs     # SAIPA: game matching, IPTC, fuzzy search (needs internet)
 ```
 
 Open http://localhost:2284/auth/login, click *Sign in as Wisp*, then **Folio**.

@@ -11,6 +11,8 @@ services:
       IMMICH_URL: http://immich-server:2283
       # Optional: the public address, used for link previews (WhatsApp, iMessage…)
       # PUBLIC_URL: https://photos.example.com
+      # Optional: a "RinkSide" sidebar item that opens RinkSide on your laptop
+      # RINKSIDE_URL: http://localhost:2285
     volumes:
       - ./folio-data:/data
     ports:
