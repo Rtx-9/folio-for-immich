@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RinkSide</title>
+  <link rel="icon" href="/_folio/static/rinkside/icon.svg?v=__VERSION__" type="image/svg+xml">
+  <link rel="stylesheet" href="/_folio/static/rinkside/app.css?v=__VERSION__">
+</head>
+<body>
+  <!-- Home: games and "new game" -->
+  <section id="home" hidden>
+    <header class="home-head">
+      <div class="brand"><img src="/_folio/static/rinkside/icon.svg?v=__VERSION__" alt="" width="34" height="34"><span>RinkSide</span></div>
+      <a class="ghost btn-link" href="/" title="Back to Immich">← Immich</a>
+    </header>
+    <div class="home-body">
+      <section class="card new-game">
+        <h2>New game</h2>
+        <p class="muted">Open the memory card from each camera. Photos are read straight from the card in this browser and never changed.</p>
+        <div id="chosen-cards" class="chips"></div>
+        <div class="row">
+          <button class="primary" id="open-card">Open a card…</button>
+          <button id="add-card" hidden>Add another card (second camera)…</button>
+          <button class="primary" id="start-game" hidden>Start culling</button>
+          <button id="open-album">Open an Immich album…</button>
+        </div>
+        <p id="no-folder-access" class="muted small" hidden>This browser can't keep access to a card, so you'll pick it again when you reopen a game. Edge or Chrome remember it.</p>
+        <div id="home-scan" class="progress" hidden><div class="bar"><i></i></div><div class="msg"></div></div>
+      </section>
+      <p id="signed-out" class="card" hidden>Sign in to <a href="/">Immich</a> first, then come back here.</p>
+      <section class="card">
+        <h2>Games</h2>
+        <div id="games" class="games"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- A game: loupe/grid, filmstrip, side panel -->
+  <section id="game" hidden>
+    <header class="top">
+      <button class="ghost icon-btn" id="go-home" title="All games"><img src="/_folio/static/rinkside/icon.svg?v=__VERSION__" alt="RinkSide" width="26" height="26"></button>
+      <button class="ghost game-title" id="game-title" title="Game setup (teams, rosters, caption)"></button>
+      <nav class="filters" id="filters"></nav>
+      <div class="spacer"></div>
+      <label class="toggle" title="Move to the next photo after picking, rejecting or rating (A)"><input type="checkbox" id="auto-advance" checked> Auto-advance</label>
+      <div class="seg" role="group">
+        <button id="view-loupe" title="Loupe (E)">Loupe</button>
+        <button id="view-grid" title="Grid (G)">Grid</button>
+      </div>
+      <button id="btn-setup" title="Game setup">Game</button>
+      <button id="btn-export" title="Export (Ctrl+E)">Export</button>
+      <button id="btn-sync" class="primary" title="Sync to Immich">Sync</button>
+      <button class="ghost icon-btn" id="btn-help" title="Keyboard shortcuts (?)">?</button>
+    </header>
+    <div class="workspace">
+      <main id="stage">
+        <canvas id="gl"></canvas>
+        <img id="skim" alt="" hidden>
+        <div id="crop-layer" hidden><div id="crop-box"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><span class="thirds"></span></div></div>
+        <div id="loupe-info" class="overlay-info"></div>
+        <div id="loupe-badges" class="overlay-badges"></div>
+        <div id="zoom-label" class="zoom-label" hidden>100%</div>
+        <div id="before-label" class="zoom-label before" hidden>Before</div>
+        <div id="grid" hidden><div id="grid-inner"></div></div>
+        <div id="scan" class="scan" hidden><div class="scan-box"><b id="scan-text">Reading card…</b><div class="bar"><i id="scan-bar"></i></div></div></div>
+        <div id="empty" class="empty" hidden></div>
+        <div id="reconnect" class="scan" hidden><div class="scan-box"><b id="reconnect-text">Connect the card to see the photos.</b><div class="row center"><button class="primary" id="reconnect-btn">Connect the card</button></div><p class="muted small">Picks, captions and edits are saved either way.</p></div></div>
+      </main>
+      <aside id="panel">
+        <div class="tabs" id="panel-tabs">
+          <button data-tab="caption" class="on">Caption</button>
+          <button data-tab="look">Look</button>
+          <button data-tab="crop">Crop</button>
+        </div>
+        <div class="tab" data-tab="caption">
+          <label class="field">Players <small>Enter</small>
+            <input id="players" autocomplete="off" spellcheck="false" placeholder="23 a12  (home 23, away 12)">
+          </label>
+          <div id="player-chips" class="chips"></div>
+          <div class="caption-preview" id="caption-preview"></div>
+          <label class="field">Custom caption <small>T · leave empty to use the game template</small>
+            <textarea id="custom-caption" rows="4" placeholder="e.g. \23\ celebrates a goal with \a12\ watching"></textarea>
+          </label>
+          <div class="row small">
+            <button id="same-players" title="Same players as the previous photo (=)">= Same as previous</button>
+            <button id="clear-caption">Clear</button>
+          </div>
+          <dl id="frame-info" class="info"></dl>
+        </div>
+        <div class="tab" data-tab="look" hidden>
+          <div class="seg scope" role="group">
+            <button id="scope-game" class="on" title="Changes apply to every photo of this game">Whole game</button>
+            <button id="scope-photo" title="This photo gets its own look">This photo</button>
+          </div>
+          <div id="look-note" class="note"></div>
+          <div id="sliders"></div>
+          <div class="row small">
+            <button id="wb-pick" title="Click the ice to set white balance (W)">⌖ Pick ice</button>
+            <button id="wb-auto" title="White balance from the ice automatically (Shift+W)">Auto from ice</button>
+          </div>
+          <div class="row small">
+            <button id="look-copy" title="Ctrl+C">Copy</button>
+            <button id="look-paste" title="Ctrl+V">Paste</button>
+            <button id="look-paste-picks" title="Ctrl+Shift+V">Paste to all picks</button>
+            <button id="look-reset">Reset</button>
+          </div>
+          <p class="muted small">Hold <kbd>\</kbd> to see the photo without the look.</p>
+        </div>
+        <div class="tab" data-tab="crop" hidden>
+          <div class="ratios" id="ratios"></div>
+          <div class="row small">
+            <button id="crop-edit" class="primary" title="C">Crop (C)</button>
+            <button id="crop-rotate" title="Turn the crop box (R)">Rotate box (R)</button>
+            <button id="crop-clear">Remove crop</button>
+          </div>
+          <p class="muted small">Drag inside the box to move it and its corners to resize. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</p>
+        </div>
+      </aside>
+    </div>
+    <footer id="strip"><div id="strip-inner"></div></footer>
+  </section>
+
+  <!-- Dialogs -->
+
+  <dialog id="dlg-albums" class="dlg">
+    <form method="dialog">
+      <h2>Open an Immich album</h2>
+      <p class="muted">Cull and caption photos that are already in Immich. Changes go back with “Sync”.</p>
+      <input id="album-filter" placeholder="Filter albums" autocomplete="off">
+      <div id="album-list" class="album-list"></div>
+      <div class="actions"><button value="cancel">Close</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-setup" class="dlg wide">
+    <form method="dialog" id="setup-form">
+      <h2>Game setup</h2>
+      <div class="grid2">
+        <label class="field">Home team <input name="home" list="teams" autocomplete="off" required></label>
+        <label class="field">Away team <input name="away" list="teams" autocomplete="off"></label>
+        <label class="field">League <input name="league" placeholder="Liiga"></label>
+        <label class="field">Arena <input name="venue" placeholder="Helsinki Ice Hall"></label>
+        <label class="field">City <input name="city"></label>
+        <label class="field">Country <input name="country"></label>
+        <label class="field">Byline (photographer) <input name="byline"></label>
+        <label class="field">Credit <input name="credit"></label>
+        <label class="field span2">Copyright <input name="copyright" placeholder="© 2026 Your Name"></label>
+        <label class="field span2">Keywords <small>comma separated, added to every photo</small><input name="keywords" placeholder="ice hockey, jääkiekko"></label>
+      </div>
+      <h3>Rosters <small class="muted">one player per line, “23 Matti Virtanen”. Remembered per team.</small></h3>
+      <div class="grid2">
+        <label class="field"><span id="roster-home-label">Home roster</span><textarea name="rosterHome" rows="8" spellcheck="false"></textarea></label>
+        <label class="field"><span id="roster-away-label">Away roster</span><textarea name="rosterAway" rows="8" spellcheck="false"></textarea></label>
+      </div>
+      <h3>Caption</h3>
+      <label class="field">Template <textarea name="template" rows="2" spellcheck="false"></textarea></label>
+      <div id="tokens" class="chips"></div>
+      <div class="grid2">
+        <label class="field">Date style
+          <select name="dateStyle">
+            <option value="en-US">October 29, 2026</option>
+            <option value="en-GB">29 October 2026</option>
+            <option value="fi">29.10.2026 (Finnish, “ja”)</option>
+            <option value="iso">2026-10-29</option>
+          </select>
+        </label>
+        <div class="field">Example <div id="template-preview" class="caption-preview"></div></div>
+      </div>
+      <h3>Cameras <small class="muted">fix a camera clock so bodies line up in one timeline</small></h3>
+      <div id="cameras" class="cameras"></div>
+      <h3>Cards and folders</h3>
+      <div id="sources" class="sources"></div>
+      <div class="actions">
+        <button value="cancel">Cancel</button>
+        <button value="save" class="primary">Save</button>
+      </div>
+    </form>
+    <datalist id="teams"></datalist>
+  </dialog>
+
+  <dialog id="dlg-export" class="dlg">
+    <form method="dialog" id="export-form">
+      <h2>Export</h2>
+      <label class="field">Photos
+        <select name="scope">
+          <option value="picks">Picks</option>
+          <option value="rated">Picks and rated photos</option>
+          <option value="kept">Everything except rejects</option>
+          <option value="selected">Selected in the grid</option>
+        </select>
+      </label>
+      <div class="grid2">
+        <label class="field">Long edge (px) <small>0 = full size</small><input name="longEdge" type="number" min="0" max="20000" step="1"></label>
+        <label class="field">JPEG quality <span id="q-val"></span><input name="quality" type="range" min="40" max="100"></label>
+      </div>
+      <label class="field">File names <input name="pattern" spellcheck="false"></label>
+      <div class="muted small">Tokens: {date} {time} {home} {away} {league} {seq} {name} {camera} · e.g. <b id="name-preview"></b></div>
+      <div class="field" id="export-folder-field">Folder
+        <div class="row tight"><button type="button" id="export-pick">Choose folder…</button><span id="export-folder" class="muted small"></span></div>
+      </div>
+      <label class="field">Subfolder for this game <input name="folder" spellcheck="false"></label>
+      <label class="check"><input type="checkbox" name="originals"> Also copy the originals (NEF + JPG) with .xmp sidecars for Lightroom</label>
+      <p id="zip-note" class="muted small" hidden>This browser can't write to a folder, so the photos download as a ZIP.</p>
+      <div id="export-progress" class="progress" hidden><div class="bar"><i></i></div><div class="msg"></div></div>
+      <div class="actions">
+        <button value="cancel" id="export-close">Close</button>
+        <button type="button" class="primary" id="export-go">Export</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-sync" class="dlg">
+    <form method="dialog" id="sync-form">
+      <h2>Sync to Immich</h2>
+      <p class="muted" id="sync-target"></p>
+      <div id="sync-local">
+        <label class="field">Upload
+          <select name="scope">
+            <option value="picks">Picks</option>
+            <option value="kept">Everything except rejects</option>
+            <option value="all">The full card (rejects get archived or tagged)</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" name="includeRaw"> Upload NEFs too (stacked under the JPG)</label>
+        <label class="check"><input type="checkbox" name="album"> Put them in a game album: <input name="albumName" class="inline" spellcheck="false"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="favorite"> Picks become favorites</label>
+      <label class="check"><input type="checkbox" name="pickTag"> Tag picks “RinkSide/Pick”</label>
+      <label class="field">Rejects
+        <select name="rejects">
+          <option value="archive">Archive them (never deleted)</option>
+          <option value="tag">Tag them “RinkSide/Reject”</option>
+          <option value="none">Leave them alone</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" name="caption"> Captions become descriptions</label>
+      <label class="check"><input type="checkbox" name="rating"> Stars become ratings</label>
+      <label class="check"><input type="checkbox" name="tags"> Players and teams become tags (Players/…, Teams/…)</label>
+      <div id="sync-progress" class="progress" hidden><div class="bar"><i></i></div><div class="msg"></div><ul class="errors"></ul></div>
+      <div id="people" class="people" hidden></div>
+      <div class="actions">
+        <button value="cancel">Close</button>
+        <button type="button" id="people-go" hidden>Suggest names for Immich people…</button>
+        <button type="button" class="primary" id="sync-go">Sync now</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-help" class="dlg wide">
+    <form method="dialog">
+      <h2>Keyboard shortcuts</h2>
+      <div class="keys">
+        <div><h3>Moving</h3>
+          <p><kbd>←</kbd> <kbd>→</kbd> previous / next (hold to skim)</p>
+          <p><kbd>↑</kbd> <kbd>↓</kbd> row up / down in the grid</p>
+          <p><kbd>Home</kbd> <kbd>End</kbd> first / last</p>
+          <p><kbd>G</kbd> grid · <kbd>E</kbd> loupe · <kbd>Enter</kbd> open in loupe</p>
+          <p><kbd>Z</kbd> or click: 100% · drag to pan</p>
+        </div>
+        <div><h3>Culling</h3>
+          <p><kbd>Space</kbd> or <kbd>P</kbd> pick</p>
+          <p><kbd>X</kbd> reject · <kbd>U</kbd> unflag</p>
+          <p><kbd>1</kbd>–<kbd>5</kbd> stars · <kbd>0</kbd> no stars</p>
+          <p><kbd>A</kbd> auto-advance on/off</p>
+          <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</p>
+        </div>
+        <div><h3>Caption</h3>
+          <p><kbd>Enter</kbd> type players: “23 a12”</p>
+          <p><kbd>Shift</kbd>+<kbd>Enter</kbd> save and go to next</p>
+          <p><kbd>=</kbd> same players as the previous photo</p>
+          <p><kbd>T</kbd> custom caption (\23\ \a12\ codes)</p>
+        </div>
+        <div><h3>Look and crop</h3>
+          <p><kbd>W</kbd> pick white balance on the ice · <kbd>Shift</kbd>+<kbd>W</kbd> auto</p>
+          <p><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> copy / paste look · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> to all picks</p>
+          <p><kbd>\</kbd> before / after</p>
+          <p><kbd>C</kbd> crop · <kbd>R</kbd> rotate box · <kbd>Enter</kbd> apply · <kbd>Esc</kbd> cancel</p>
+          <p><kbd>Ctrl</kbd>+<kbd>E</kbd> export · <kbd>?</kbd> this help</p>
+        </div>
+      </div>
+      <div class="actions"><button value="cancel" class="primary">Got it</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="/_folio/static/rinkside/app.js?v=__VERSION__"></script>
+</body>
+</html>

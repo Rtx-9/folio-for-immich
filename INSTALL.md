@@ -51,7 +51,7 @@ Use port **2284** instead of 2283:
 - Before: `http://your-server:2283`
 - Now: `http://your-server:2284`
 
-You'll see normal Immich, with a new **Folio** item in the sidebar.
+You'll see normal Immich, with new **Folio** and **RinkSide** items in the sidebar. Folio makes share pages; RinkSide culls and captions hockey photos straight from a memory card (use Edge or Chrome).
 
 **Using a domain (reverse proxy)?** Change where it points from `immich-server:2283` to `immich_folio:2284`. For example, in Caddy:
 

@@ -34,11 +34,75 @@ clients, guests or family.
 - **Draft → Publish** with a live desktop/tablet/phone preview. Custom page address
   (`/p/your-name`), link previews for WhatsApp/iMessage, and a view counter.
 
-## RinkSide link (optional)
+## RinkSide: cull, caption and export hockey photos
 
-[RinkSide](https://github.com/Rtx-9/rinkside), the hockey photo culling tool, runs on your
-laptop so it works at the rink without Wi-Fi. Set `RINKSIDE_URL` (for example
-`http://localhost:2285`) and Folio adds a **RinkSide** item to Immich's sidebar that opens it.
+<img src="public/rinkside/icon.svg" width="40" align="left" alt="">
+
+A second sidebar item, **RinkSide**, is a fast culling and captioning tool for hockey
+games, built for a laptop at the rink. Open it in **Edge or Chrome** on your Immich
+address (the `https://` one).
+
+- **Straight from the memory card.** The browser reads the card directly; nothing is
+  uploaded while you cull. RinkSide never converts RAW files: it shows the camera JPEG,
+  or the full-size JPEG already inside the NEF, and decodes the next few photos ahead.
+  Holding an arrow key skims thumbnails.
+- **Several bodies, one timeline.** NEF+JPG pairs are matched, and NEF-only shots work
+  too. Cameras are merged by capture time down to the hundredth of a second, with a
+  clock fix per camera. Both bodies' `DSC_0001` files stay apart.
+- **Captions from jersey numbers.** Paste each roster once (`23 Matti Virtanen`); it's
+  remembered per team. On a photo, type `23 a12` (home 23, away 12) and the template
+  writes the caption. Photo Mechanic codes like `\23\` and `\a12\` work in custom captions.
+- **Look and crop.** White balance from the ice (click it, or automatic), exposure,
+  contrast, highlights, shadows, saturation. A look covers the whole game or one photo,
+  and can be pasted to all picks. Crop offers free, 3:2, 4:5, 16:9, 1:1 and 9:16.
+- **Export** writes resized JPEGs to a folder you choose. The camera EXIF is kept, and
+  caption, byline, copyright, keywords and date go in as **IPTC and XMP**, for Photo
+  Mechanic, Lightroom and wire services. It can also copy the picked NEF+JPG files with
+  `.xmp` sidecars.
+- **Sync to Immich**, with your own Immich login (no API key):
+  - uploads skip anything Immich already has (SHA-1 check);
+  - NEF+JPG pairs are stacked;
+  - picks become favorites and a `RinkSide/Pick` tag;
+  - rejects are archived or tagged, never deleted;
+  - stars become ratings and captions become descriptions;
+  - players and teams become tags (`Players/…`, `Teams/…`);
+  - each game gets an album.
+
+  It can also suggest names for Immich's face-recognition People, and you can cull or
+  caption an existing Immich album instead of a card.
+
+Picks, stars, captions, looks and crops are saved by Folio for your Immich account as
+you go, so you can close the laptop and carry on later. You'll be asked to reconnect
+the card after a reload.
+
+**First game:**
+
+1. Click **Open a card…** and choose the card; use **Add another card** for a second
+   body. Then click **Start culling**.
+2. In **Game setup**, fill in the teams, league, arena, byline and copyright, and paste
+   both rosters. Under **Cameras**, a body whose clock was off gets a fix like `+2:05`.
+3. Cull with `→`, `P`, `X` and `1`–`5`. Caption with `Enter`, then `23 a12`, then
+   `Shift+Enter`. Press `Shift+W` on a photo with lots of ice to set the white balance.
+4. Use **Export** (`Ctrl+E`) for the agency, and **Sync** to put the picks in Immich.
+
+| Keys | |
+|---|---|
+| `←` `→` (hold to skim), `Home` `End` | move |
+| `Space`/`P`, `X`, `U` | pick, reject, unflag |
+| `1`–`5`, `0` | stars |
+| `Z` or click, drag | 100% focus check, pan |
+| `G` / `E` | grid / loupe |
+| `Enter`, `Shift+Enter`, `=` | type players, save and go to the next photo, same as previous |
+| `T` | custom caption |
+| `W` / `Shift+W` | white balance: click the ice / automatic |
+| `Ctrl+C` / `Ctrl+V` / `Ctrl+Shift+V` | copy / paste look / paste to all picks |
+| `\` (hold) | before / after |
+| `C`, `R`, `Enter`, `Esc` | crop, rotate box, apply, cancel |
+| `A`, `Ctrl+Z`, `Ctrl+E`, `?` | auto-advance, undo, export, all shortcuts |
+
+Firefox and Safari can't keep access to a card or write to a folder. They pick the card
+again after a reload, and export as a ZIP download. Why RinkSide isn't an Immich plugin,
+and the Immich API it uses, is explained in [docs/rinkside.md](docs/rinkside.md).
 
 ## How it works
 
@@ -49,8 +113,9 @@ browser ──► Folio :2284 ──► Immich :2283
               │
               ├─ /folio        the page editor (uses your Immich session)
               ├─ /p/<slug>     public pages
+              ├─ /rinkside     RinkSide (photos stay in the browser; games are saved here)
               └─ everything else is passed through to Immich unchanged
-                 (+ a tiny script that adds "Folio" to the sidebar)
+                 (+ a tiny script that adds "Folio" and "RinkSide" to the sidebar)
 ```
 
 For each album on a page, Folio creates a private Immich album link, and for each Photos
@@ -76,8 +141,8 @@ UI, so a companion service like this is the way to extend the web app.
 Folio has to be on the **same domain** as Immich. That's how it reuses your Immich
 login and adds the sidebar link.
 
-**Alternative (keep your proxy pointing at Immich):** route only `/p/*`, `/folio*`
-and `/_folio/*` to Folio. Everything still works except the sidebar link. Open
+**Alternative (keep your proxy pointing at Immich):** route only `/p/*`, `/folio*`,
+`/rinkside*` and `/_folio/*` to Folio. Everything still works except the sidebar link. Open
 `https://your-domain/folio` directly.
 
 ### Settings
@@ -86,11 +151,10 @@ and `/_folio/*` to Folio. Everything still works except the sidebar link. Open
 |---|---|---|
 | `IMMICH_URL` | `http://localhost:2283` | How Folio reaches Immich |
 | `PORT` | `2284` | |
-| `FOLIO_DATA` | `./data` | Pages (`folio.json`) and uploaded logos/covers |
+| `FOLIO_DATA` | `./data` | Pages (`folio.json`), uploaded logos/covers, and RinkSide games (`rinkside/`) |
 | `PUBLIC_URL` | (from request) | e.g. `https://photos.example.com`, for link previews |
 | `FOLIO_PROXY` | `true` | Forward non-Folio requests to Immich |
-| `FOLIO_INJECT` | `true` | Add "Folio" to Immich's sidebar |
-| `RINKSIDE_URL` | (none) | Also add a "RinkSide" sidebar item linking here |
+| `FOLIO_INJECT` | `true` | Add "Folio" and "RinkSide" to Immich's sidebar |
 | `FOLIO_MAX_UPLOAD_MB` | `15` | Max logo/cover upload size |
 
 Back up `FOLIO_DATA` together with Immich.
@@ -117,6 +181,8 @@ No build step and no npm dependencies. Node 20+.
 node dev/mock-immich.js     # fake Immich with sample albums on :2283
 node src/server.js          # Folio on :2284
 node dev/smoke-test.mjs     # end-to-end checks (password, expiry, downloads, CSRF…)
+node dev/rinkside-test.mjs  # RinkSide: sample Z50II/D3 cards, culling, export (checked
+                            # with Pillow), sync to a mock Immich (needs Python + Pillow, Edge/Chrome)
 ```
 
 Open http://localhost:2284/auth/login, click *Sign in as Wisp*, then **Folio**.

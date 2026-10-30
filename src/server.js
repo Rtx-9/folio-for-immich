@@ -22,7 +22,6 @@ import {
   readForm,
   readJson,
   redirect,
-  send,
   sendHtml,
   sendJson,
   serveFile,
@@ -44,6 +43,7 @@ import {
 } from './pages.js';
 import * as proxy from './proxy.js';
 import { dateLabel, renderAlbum, renderIndex, renderLocked, renderMessage } from './render.js';
+import { flushRinkside, rinksideApi } from './rinkside.js';
 import { load, pages, save, uploadsDir } from './store.js';
 import { albumEntries, FONTS, OPTIONS, photoBlocks, PRESETS, sanitizeDraft, TEMPLATES } from './themes.js';
 
@@ -238,14 +238,9 @@ const editorView = (page) => ({
 const templateInfo = () =>
   TEMPLATES.map((t) => ({ id: t.id, name: t.name, blurb: t.blurb, preset: t.preset, hero: t.hero, blocks: t.blocks().map((b) => b.type) }));
 
-// App pages (the Folio editor), with asset URLs pinned to this version so
+// App pages (the Folio editor and RinkSide), with asset URLs pinned to this version so
 // browsers never mix old and new files.
 const htmlCache = new Map();
-
-// The sidebar script, with the optional RinkSide link filled in.
-let injectCache;
-const injectJs = () =>
-  (injectCache ??= fs.readFileSync(path.join(STATIC, 'inject.js'), 'utf8').replace('__RINKSIDE_URL__', JSON.stringify(config.rinksideUrl).slice(1, -1)));
 function appHtml(name) {
   if (!htmlCache.has(name)) {
     htmlCache.set(name, fs.readFileSync(path.join(STATIC, name), 'utf8').replaceAll('__VERSION__', encodeURIComponent(version)));
@@ -285,6 +280,8 @@ async function editorApi(req, res, url) {
 
   const auth = await requireAuth(req);
   const { user } = auth;
+
+  if (p.startsWith('/rinkside/')) return rinksideApi(req, res, url, p.slice('/rinkside'.length), auth);
 
   if (p === '/albums' && method === 'GET') {
     const albums = await immich.listAlbums(auth);
@@ -460,7 +457,8 @@ async function handle(req, res) {
   const p = url.pathname;
 
   if (p === '/folio' || p.startsWith('/folio/')) return sendHtml(res, 200, appHtml('editor.html'));
-  if (p === '/_folio/inject.js') return send(res, 200, injectJs(), { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-cache' });
+  if (p === '/rinkside' || p.startsWith('/rinkside/')) return sendHtml(res, 200, appHtml('rinkside/index.html'));
+  if (p === '/_folio/inject.js') return serveFile(req, res, path.join(STATIC, 'inject.js'));
   if (p.startsWith('/_folio/static/')) {
     const file = path.join(STATIC, path.normalize(p.slice('/_folio/static/'.length)).replace(/^(\.\.[/\\])+/, ''));
     if (!file.startsWith(STATIC + path.sep)) throw new HttpError(404, 'Not found');
@@ -501,6 +499,7 @@ const server = http.createServer((req, res) => {
   handle(req, res).catch((err) => onError(req, res, err));
 });
 server.on('upgrade', proxy.upgrade);
+process.on('exit', flushRinkside);
 server.listen(config.port, config.host, () => {
   console.log(`Folio listening on http://localhost:${config.port}  →  Immich at ${config.immichUrl}`);
   console.log(`Editor: http://localhost:${config.port}/folio`);
