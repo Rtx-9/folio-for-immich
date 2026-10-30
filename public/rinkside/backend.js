@@ -288,6 +288,88 @@ export async function runSync(sess, rosters, fileFor, status) {
   await saveProgress({ ...extra, last: sync.last });
 }
 
+// ---- export to Immich: the edited JPEGs ------------------------------------------------------------
+export const EDIT_TAG = 'RinkSide/Edit';
+
+// What decides the pixels of an edit; if it hasn't changed, the photo isn't uploaded again.
+export function editSignature(f, look, options) {
+  const src = f.jpg || f.nef || f.asset || {};
+  return JSON.stringify([src.rel || src.id, src.size || 0, look || null, f.crop || null, options.longEdge, options.quality]);
+}
+
+async function albumFor(ctx) {
+  if (ctx.albumId) return ctx.albumId;
+  const albums = await immich('GET', '/albums');
+  const album = albums.find((a) => a.albumName === ctx.albumName) || (await immich('POST', '/albums', { body: { albumName: ctx.albumName, assetIds: [] } }));
+  ctx.albumId = album.id;
+  return album.id;
+}
+
+async function tagIds(ctx, names) {
+  const missing = names.filter((n) => !ctx.tags.has(n));
+  if (missing.length) for (const t of await immich('PUT', '/tags', { body: { tags: missing } })) ctx.tags.set(t.value, t.id);
+  return names.map((n) => ctx.tags.get(n)).filter(Boolean);
+}
+
+// Upload (or keep) one edited photo and make its caption, rating, tags, album
+// and stack match. `render()` is only called when the pixels changed.
+// ctx: { albumName, stack, tags: Map }. Returns 'uploaded' | 'unchanged'.
+export async function exportEdit(ctx, sess, f, rosters, { sig, name, render }) {
+  const sync = sess.sync;
+  sync.exports ||= {};
+  sync.applied ||= {};
+  const prev = sync.exports[f.id];
+  const meta = frameMeta(sess, f, rosters);
+  let id = prev?.id;
+  let result = 'unchanged';
+  if (!prev || prev.sig !== sig) {
+    const bytes = await render();
+    const blob = new Blob([bytes], { type: 'image/jpeg' });
+    const sum = await sha1Hex(blob);
+    const form = new FormData();
+    form.set('fileCreatedAt', isoWithZone(f.t, f.tz));
+    form.set('fileModifiedAt', new Date().toISOString());
+    form.set('filename', name);
+    form.set('assetData', blob, name);
+    form.set('sidecarData', new Blob([xmpPacket(meta, { sidecar: true })], { type: 'application/xml' }), `${name}.xmp`);
+    id = (await immich('POST', '/assets', { form, headers: { 'x-immich-checksum': sum } })).id;
+    // The earlier edit of this photo goes to Immich's trash (restorable there).
+    if (prev?.id && prev.id !== id) await immich('DELETE', '/assets', { body: { ids: [prev.id], force: false } }).catch(() => {});
+    sync.exports[f.id] = { id, sig, stacked: false };
+    delete sync.applied[prev?.id];
+    result = 'uploaded';
+  }
+
+  // Caption, rating, favorite and tags, only what differs from last time.
+  const was = sync.applied[id] || {};
+  const dto = {};
+  if (meta.caption !== (was.description ?? '')) dto.description = meta.caption;
+  const rating = f.stars || null;
+  if (rating !== (was.rating ?? null)) dto.rating = rating;
+  if (Object.keys(dto).length) await immich('PUT', `/assets/${id}`, { body: dto });
+  if (f.flag === 1 && !was.isFavorite) await immich('PUT', '/assets', { body: { ids: [id], isFavorite: true } });
+  const tags = [...meta.tags, EDIT_TAG];
+  const oldTags = was.tags || [];
+  const ids = await tagIds(ctx, [...new Set([...tags, ...oldTags])]);
+  const byName = new Map([...ctx.tags].filter(([, v]) => ids.includes(v)));
+  for (const t of tags.filter((x) => !oldTags.includes(x))) await immich('PUT', `/tags/${byName.get(t)}/assets`, { body: { ids: [id] } });
+  for (const t of oldTags.filter((x) => !tags.includes(x))) if (byName.get(t)) await immich('DELETE', `/tags/${byName.get(t)}/assets`, { body: { ids: [id] } });
+  sync.applied[id] = { ...was, ...('description' in dto && { description: dto.description }), ...('rating' in dto && { rating }), isFavorite: was.isFavorite || f.flag === 1, tags };
+
+  if (result === 'uploaded') {
+    await immich('PUT', `/albums/${await albumFor(ctx)}/assets`, { body: { ids: [id] } });
+    // On top of the synced original (and its NEF), so Immich shows the edit first.
+    const orig = sync.assets?.[f.id];
+    const under = orig ? [orig.jpg, orig.nef, orig.asset].filter(Boolean) : [];
+    if (ctx.stack && under.length) {
+      await immich('POST', '/stacks', { body: { assetIds: [id, ...under] } });
+      sync.exports[f.id].stacked = true;
+    }
+  }
+  await api('PATCH', `/s/${sess.id}`, { sync: { exports: { [f.id]: sync.exports[f.id] }, applied: { [id]: sync.applied[id] } } });
+  return result;
+}
+
 // ---- Immich People: suggest names from captioned photos ---------------------------------------------
 export async function suggestPeople(sess, rosters, { limit = 400 } = {}) {
   const byPerson = new Map();

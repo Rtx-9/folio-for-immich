@@ -190,18 +190,31 @@
           <option value="selected">Selected in the grid</option>
         </select>
       </label>
+      <label class="field">Send to
+        <select name="dest">
+          <option value="folder">A folder on this computer</option>
+          <option value="immich">Immich (the edited JPEGs)</option>
+        </select>
+      </label>
       <div class="grid2">
         <label class="field">Long edge (px) <small>0 = full size</small><input name="longEdge" type="number" min="0" max="20000" step="1"></label>
         <label class="field">JPEG quality <span id="q-val"></span><input name="quality" type="range" min="40" max="100"></label>
       </div>
       <label class="field">File names <input name="pattern" spellcheck="false"></label>
       <div class="muted small">Tokens: {date} {time} {home} {away} {league} {seq} {name} {camera} · e.g. <b id="name-preview"></b></div>
+      <div id="immich-dest" hidden>
+        <label class="field">Album <input name="album" spellcheck="false"></label>
+        <label class="check"><input type="checkbox" name="stack"> Stack each edit on top of its original (when the original is synced)</label>
+        <p class="muted small">Captions, stars, players and teams go along as in Sync, plus a “RinkSide/Edit” tag. Exporting again skips unchanged photos; a photo you changed replaces its earlier edit, which goes to Immich's trash.</p>
+      </div>
+      <div id="folder-dest">
       <div class="field" id="export-folder-field">Folder
         <div class="row tight"><button type="button" id="export-pick">Choose folder…</button><span id="export-folder" class="muted small"></span></div>
       </div>
       <label class="field">Subfolder for this game <input name="folder" spellcheck="false"></label>
       <label class="check"><input type="checkbox" name="originals"> Also copy the originals (NEF + JPG) with .xmp sidecars for Lightroom</label>
       <p id="zip-note" class="muted small" hidden>This browser can't write to a folder, so the photos download as a ZIP.</p>
+      </div>
       <div id="export-progress" class="progress" hidden><div class="bar"><i></i></div><div class="msg"></div></div>
       <div class="actions">
         <button value="cancel" id="export-close">Close</button>

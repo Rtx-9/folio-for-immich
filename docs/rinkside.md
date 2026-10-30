@@ -41,6 +41,14 @@ Folio already sits in front of Immich on the same address, so RinkSide is a page
     (UTF-8, with the MD5 digest Lightroom checks) and XMP;
   - the result goes to the folder you choose, or to a ZIP in browsers without folder
     access.
+- **Export to Immich** uploads those edited JPEGs instead of writing files:
+  - they go into an album, tagged `RinkSide/Edit`, and are stacked on top of the synced
+    original;
+  - an edit is uploaded again only when something that changes its pixels has changed
+    (look, crop, size, quality);
+  - the replaced edit is moved to Immich's trash. Folio only allows that for asset IDs
+    recorded as RinkSide edits in your games, with `force: false`, so originals can't be
+    deleted this way, and nothing is ever deleted permanently.
 
 A plugin that captions photos on upload was considered as a server-side extra. It isn't
 needed, because RinkSide's sync already writes the finished caption into every photo it
@@ -57,6 +65,7 @@ uploads. It would also need the external-plugin flag and an Immich build environ
   or null; 0 is invalid in v3. Values set this way are *locked*, so re-extraction keeps
   them.
 - `PUT /api/assets` with `{ ids, isFavorite }` or `{ ids, visibility: 'archive' | 'timeline' }`.
+- `DELETE /api/assets` with `{ ids, force: false }` (trash), only for RinkSide's own replaced edits.
 - `PUT /api/tags` with `{ tags: ['Players/Matti Virtanen'] }` creates the hierarchy.
 - `PUT` and `DELETE /api/tags/{id}/assets`.
 - `POST /api/albums`, `PUT /api/albums/{id}/assets`, and `POST /api/stacks`, where the

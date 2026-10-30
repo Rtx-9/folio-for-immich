@@ -392,6 +392,50 @@ try {
   check('names the person in Immich', (await mockState()).people[0].name === 'Matti Virtanen');
   await page.eval('document.querySelector("#dlg-sync").close()');
 
+  // -------------------------------------------------------------- export to Immich (the edited JPEGs)
+  console.log('Export to Immich');
+  const exportToImmich = async () => {
+    await page.eval('document.querySelector("#dlg-export").open || document.querySelector("#btn-export").click()');
+    await page.wait('document.querySelector("#dlg-export").open');
+    await page.eval(`(() => { const f = document.querySelector('#export-form'); f.elements.scope.value = 'picks'; f.elements.dest.value = 'immich'; f.elements.longEdge.value = '1600'; f.elements.stack.checked = true; f.dispatchEvent(new Event('input')); })()`);
+    await page.eval('document.querySelector("#export-go").click()');
+    await page.wait('/sent to Immich, album/.test(document.querySelector("#export-progress .msg").textContent)', 90000);
+    const m = await page.eval('document.querySelector("#export-progress .msg").textContent');
+    await page.eval('document.querySelector("#dlg-export").close()');
+    return m;
+  };
+  await page.eval('document.querySelector("#btn-export").click()');
+  await page.wait('document.querySelector("#dlg-export").open && document.querySelector("#export-form").elements.album.value');
+  check('the dialog offers Immich as a destination, with the game album', await page.eval(`(() => { const f = document.querySelector('#export-form'); f.elements.dest.value = 'immich'; f.dispatchEvent(new Event('input')); return !document.querySelector('#immich-dest').hidden && document.querySelector('#folder-dest').hidden && f.elements.album.value === '2026-10-29 HIFK vs Tappara'; })()`));
+  let em = await exportToImmich();
+  st = await mockState();
+  const edits = st.assets.filter((a) => a.tags.includes('RinkSide/Edit') && !a.isTrashed);
+  check('9 edited JPEGs sent to Immich', em.startsWith('9 edit(s) sent to Immich, album “2026-10-29 HIFK vs Tappara”') && edits.length === 9, em);
+  check('edits are in the game album, with captions and players', edits.every((a) => st.albums.find((x) => x.albumName === '2026-10-29 HIFK vs Tappara').assets.includes(a.id)) && edits.some((a) => a.description.startsWith('Joni Ikonen (Tappara) and Ville Varis') && a.tags.includes('Players/Ville Varis')));
+  const z2orig = sess.sync.assets[byName('Z50II', 'DSC_0002').id];
+  const z2edit = edits.find((a) => st.stacks.some((x) => x.primaryAssetId === a.id && x.assetIds.includes(z2orig.jpg) && x.assetIds.includes(z2orig.nef)));
+  check('each edit is stacked on top of its synced JPG and NEF', Boolean(z2edit) && st.stacks.length === edits.filter((a) => st.stacks.some((x) => x.primaryAssetId === a.id)).length, st.stacks.length);
+  fs.writeFileSync(path.join(tmp, 'edit.jpg'), Buffer.from(await (await fetch(`http://localhost:${MOCK}/__asset/${z2edit.id}`)).arrayBuffer()));
+  const er = pillow(path.join(tmp, 'edit.jpg'))[0];
+  check('Pillow: the uploaded edit is the rendered JPEG with its metadata', er.size[0] === 1600 && er.exif.Orientation === 1 && er.iptc['Caption-Abstract'] === z2edit.description && er.mean[0] > 150, er);
+  const postsBefore = st.log.filter((l) => l === 'POST /api/assets').length;
+  em = await exportToImmich();
+  st = await mockState();
+  check('exporting again skips unchanged photos', em.startsWith('0 edit(s) sent') && /9 unchanged, skipped/.test(em) && st.log.filter((l) => l === 'POST /api/assets').length === postsBefore, em);
+  await page.eval(`(() => { const f = rinkside.S.frames.find((x) => x.name === 'DSC_0007' && rinkside.S.sess.cameras[x.cam].label === 'Z50II'); rinkside.go(rinkside.S.order.indexOf(f)); })()`);
+  await page.wait('rinkside.cur().name === "DSC_0007"');
+  await page.eval('document.querySelector("#scope-photo").click()');
+  await page.eval('rinkside.setLook({ exposure: 0.7 })');
+  await sleep(300);
+  const oldEdit = (await api('GET', `/s/${sid}`)).data.sync.exports[await page.eval('rinkside.cur().id')].id;
+  em = await exportToImmich();
+  st = await mockState();
+  check('a changed photo replaces its earlier edit (old one in the trash)', em.startsWith('1 edit(s) sent') && st.assets.find((a) => a.id === oldEdit).isTrashed && st.assets.filter((a) => a.tags.includes('RinkSide/Edit') && !a.isTrashed).length === 9, em);
+  const anOriginal = z2orig.jpg;
+  const del = await fetch(`${BASE}/_folio/api/rinkside/immich/assets`, { method: 'DELETE', headers: H, body: JSON.stringify({ ids: [anOriginal], force: true }) });
+  st = await mockState();
+  check('only RinkSide’s own edits can be trashed through Folio, never permanently', (await del.json()).trashed === 0 && st.assets.find((a) => a.id === anOriginal && !a.isTrashed));
+
   // Offline
   mock.kill();
   await sleep(300);

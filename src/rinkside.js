@@ -10,13 +10,14 @@ import https from 'node:https';
 import path from 'node:path';
 import { config } from './config.js';
 import { HttpError, readJson, sendJson } from './http.js';
+import { api as immichApi } from './immich.js';
 
 const ROOT = path.join(config.dataDir, 'rinkside');
 
 const LOOK_KEYS = ['exposure', 'temp', 'tint', 'contrast', 'highlights', 'shadows', 'saturation'];
 const GAME_FIELDS = ['home', 'away', 'league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle', 'date'];
 const REMEMBERED = ['league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle'];
-export const EXPORT_DEFAULTS = { longEdge: 2048, quality: 90, pattern: '{date}_{home}-{away}_{seq}', scope: 'picks', originals: false, folder: '' };
+export const EXPORT_DEFAULTS = { longEdge: 2048, quality: 90, pattern: '{date}_{home}-{away}_{seq}', scope: 'picks', originals: false, folder: '', dest: 'folder', album: '', stack: true };
 export const SYNC_DEFAULTS = { scope: 'picks', includeRaw: true, favorite: true, pickTag: true, rejects: 'archive', caption: true, rating: true, tags: true, album: true, albumName: '' };
 
 // ---- storage: one folder per Immich user -------------------------------------------
@@ -55,6 +56,15 @@ export function flushRinkside() {
   for (const file of [...pending.keys()]) flushOne(file);
 }
 const load = (file, fallback) => pending.get(file)?.data ?? readJsonFile(file, fallback);
+
+function listGames(user) {
+  const dir = path.join(userDir(user), 'games');
+  try {
+    return fs.readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => path.join(dir, f));
+  } catch {
+    return [];
+  }
+}
 
 function getSession(user, id) {
   if (!validId(id)) throw new HttpError(404, 'Game not found');
@@ -184,7 +194,7 @@ function applySync(sess, sync) {
   const s = sess.sync;
   if (sync.options) s.options = { ...SYNC_DEFAULTS, ...s.options, ...pick(sync.options, SYNC_DEFAULTS) };
   // Progress written by the browser during a sync: which files are in Immich and what was set there.
-  for (const k of ['assets', 'applied', 'sums']) if (sync[k] && typeof sync[k] === 'object') s[k] = { ...s[k], ...sync[k] };
+  for (const k of ['assets', 'applied', 'sums', 'exports']) if (sync[k] && typeof sync[k] === 'object') s[k] = { ...s[k], ...sync[k] };
   if (Array.isArray(sync.inAlbum)) s.inAlbum = [...new Set([...(s.inAlbum || []), ...sync.inAlbum.map(String)])];
   for (const k of ['albumId', 'albumName', 'last']) if (typeof sync[k] === 'string') s[k] = sync[k].slice(0, 300);
 }
@@ -249,20 +259,24 @@ export async function rinksideApi(req, res, url, p, auth) {
   const method = req.method;
   let m;
 
+  // Re-exporting a photo moves its earlier RinkSide edit to Immich's trash. Only
+  // edits RinkSide itself uploaded can go, and never permanently.
+  if (p === '/immich/assets' && method === 'DELETE') {
+    const { ids } = await readJson(req);
+    const edits = new Set();
+    for (const f of listGames(user)) for (const e of Object.values(load(f, null)?.sync?.exports || {})) edits.add(e.id);
+    const allowed = (Array.isArray(ids) ? ids : []).filter((id) => edits.has(id));
+    if (allowed.length) await immichApi('DELETE', '/assets', { auth, body: { ids: allowed, force: false } });
+    return sendJson(res, 200, { trashed: allowed.length });
+  }
   if ((m = p.match(/^\/immich(\/.*)$/))) return passThrough(req, res, m[1], url.search, auth);
 
   const settingsFile = path.join(userDir(user), 'settings.json');
   const rostersFile = path.join(userDir(user), 'rosters.json');
 
   if (p === '/state' && method === 'GET') {
-    let files = [];
-    try {
-      files = fs.readdirSync(path.join(userDir(user), 'games')).filter((f) => f.endsWith('.json'));
-    } catch {
-      // no games yet
-    }
-    const sessions = files
-      .map((f) => load(path.join(userDir(user), 'games', f), null))
+    const sessions = listGames(user)
+      .map((f) => load(f, null))
       .filter(Boolean)
       .map(summary)
       .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));

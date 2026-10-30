@@ -1,7 +1,7 @@
 // RinkSide inside Folio: cull, caption, look, crop, export and sync hockey photos.
 // Photos are read from the card by this browser; picks and edits are saved by
 // Folio for your Immich account; Immich is reached with your Immich login.
-import { albumAssets, api, framesFromAssets, immich, immichUrl, runSync, suggestPeople } from './backend.js';
+import { albumAssets, api, editSignature, exportEdit, framesFromAssets, immich, immichUrl, runSync, suggestPeople } from './backend.js';
 import { captionFor, DEFAULT_TEMPLATE, fileName, gameTitle, parsePlayers, parseRoster, rosterText, slug, TOKENS } from './caption.js';
 import { Card, freeName, hasFolderAccess, loadHandle, pickCard, pickExportFolder, saveHandle, writable, writeFile, Zip } from './card.js';
 import { decode, iceColor, isNeutral, LOOK_DEFAULTS, neutralize, Renderer, sampleAt } from './look.js';
@@ -1531,6 +1531,9 @@ async function openExport() {
   form.elements.quality.value = ex.quality ?? 90;
   form.elements.pattern.value = ex.pattern || '{date}_{home}-{away}_{seq}';
   form.elements.folder.value = slug(gameTitle(S.sess.game, S.frames[0]?.t)) || 'RinkSide';
+  form.elements.dest.value = ex.dest === 'immich' ? 'immich' : 'folder';
+  form.elements.album.value = ex.album || (isImmich() ? S.sess.immichAlbum?.name : S.sess.sync?.albumName) || gameTitle(S.sess.game, S.frames[0]?.t);
+  form.elements.stack.checked = ex.stack !== false;
   form.elements.originals.checked = Boolean(ex.originals) && canWriteFolders();
   form.elements.originals.disabled = isImmich() || !canWriteFolders();
   $('#zip-note').hidden = canWriteFolders();
@@ -1538,6 +1541,9 @@ async function openExport() {
   exportRoot ||= await loadHandle('export-root');
   $('#export-folder').textContent = hasFolderAccess ? (exportRoot ? `📁 ${exportRoot.name}` : 'No folder chosen yet') : '';
   const refresh = () => {
+    const toImmich = form.elements.dest.value === 'immich';
+    $('#immich-dest').hidden = !toImmich;
+    $('#folder-dest').hidden = toImmich;
     $('#q-val').textContent = form.elements.quality.value;
     const f = S.frames.find((x) => x.flag === 1) || S.frames[0];
     $('#name-preview').textContent = f ? `${fileName(form.elements.pattern.value, f, S.sess.game, 1, camLabel(f))}.jpg` : '';
@@ -1584,11 +1590,15 @@ $('#export-go').onclick = async () => {
     quality: Number(form.elements.quality.value) || 90,
     pattern: form.elements.pattern.value.trim(),
     originals: form.elements.originals.checked,
+    dest: form.elements.dest.value,
+    album: form.elements.album.value.trim(),
+    stack: form.elements.stack.checked,
   };
   const ids = new Set(exportIds(options.scope));
   const prog = $('#export-progress');
   const bar = $('i', prog);
   const msg = $('.msg', prog);
+  if (options.dest === 'immich') return exportToImmich(options, ids, prog, bar, msg);
   // Where to write: a folder (Edge/Chrome) or a ZIP download.
   let dir = null;
   let zip = null;
@@ -1673,6 +1683,61 @@ $('#export-go').onclick = async () => {
   msg.textContent = `${job.cancelled ? 'Stopped. ' : ''}${done - errors.length} photo(s) exported to ${where} in ${secs} s${originals ? `, ${originals} original file(s) copied` : ''}${errors.length ? ` · ${errors.length} failed: ${errors.slice(0, 3).join('; ')}` : ''}`;
   $('#export-go').disabled = false;
 };
+
+// Render the edits and send them to Immich (only photos whose edit changed).
+async function exportToImmich(options, ids, prog, bar, msg) {
+  api('PATCH', `/s/${S.sess.id}`, { export: options }).catch(() => {});
+  S.sess.export = options;
+  prog.hidden = false;
+  $('#export-go').disabled = true;
+  exporting = { cancelled: false };
+  const job = exporting;
+  const ctx = { albumName: options.album || gameTitle(S.sess.game, S.frames[0]?.t), stack: options.stack, tags: new Map() };
+  const items = [];
+  let seq = 0;
+  for (const f of S.frames) if (ids.has(f.id)) items.push({ f, name: `${fileName(options.pattern, f, S.sess.game, ++seq, camLabel(f))}.jpg` });
+  let done = 0;
+  let uploaded = 0;
+  const errors = [];
+  const render = () => {
+    bar.style.width = `${(done / items.length) * 100}%`;
+    msg.textContent = `${done} / ${items.length} sent to Immich${errors.length ? ` · ${errors.length} failed` : ''}`;
+  };
+  render();
+  const worker = new Worker(new URL('./export-worker.js', import.meta.url), { type: 'module' });
+  for (const { f, name } of items) {
+    if (job.cancelled) break;
+    const look = isNeutral(effectiveLook(f)) ? null : effectiveLook(f);
+    try {
+      const result = await exportEdit(ctx, S.sess, f, S.rosters, {
+        sig: editSignature(f, look, options),
+        name,
+        render: async () => {
+          const blob = await fullOf(f);
+          const res = await new Promise((resolve) => {
+            worker.onmessage = (e) => resolve(e.data);
+            worker.onerror = (e) => resolve({ ok: false, error: e.message });
+            worker.postMessage({ id: f.id, blob, crop: f.crop, look, longEdge: options.longEdge, quality: options.quality });
+          });
+          if (!res.ok) throw new Error(res.error);
+          return tagJpeg(new Uint8Array(res.jpeg), { exif: await sourceExifFor(f), width: res.width, height: res.height, meta: frameMeta(S.sess, f, S.rosters) });
+        },
+      });
+      if (result === 'uploaded') uploaded++;
+    } catch (err) {
+      errors.push(`${f.name}: ${err.message}`);
+      if (err.status === 0) break;
+    }
+    done++;
+    render();
+  }
+  worker.terminate();
+  exporting = null;
+  bar.style.width = '100%';
+  const unchanged = done - uploaded - errors.length;
+  msg.textContent = `${job.cancelled ? 'Stopped. ' : ''}${uploaded} edit(s) sent to Immich, album “${ctx.albumName}”${unchanged ? `; ${unchanged} unchanged, skipped` : ''}${errors.length ? ` · ${errors.length} failed: ${errors.slice(0, 3).join('; ')}` : ''}`;
+  $('#export-go').disabled = false;
+}
 
 function uniqueZipName(base, taken) {
   let name = `${base}.jpg`;

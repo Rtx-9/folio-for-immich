@@ -59,7 +59,12 @@ address (the `https://` one).
   caption, byline, copyright, keywords and date go in as **IPTC and XMP**, for Photo
   Mechanic, Lightroom and wire services. It can also copy the picked NEF+JPG files with
   `.xmp` sidecars.
-- **Sync to Immich**, with your own Immich login (no API key):
+- **Export to Immich** sends those edited JPEGs (look and crop applied) to an album in
+  Immich, tagged `RinkSide/Edit`. If the original was synced, the edit is stacked on top
+  of it. Exporting again skips unchanged photos. A photo you changed replaces its earlier
+  edit, and the old edit goes to Immich's trash. RinkSide can only trash its own edits,
+  never originals.
+- **Sync to Immich** uploads the originals, with your own Immich login (no API key):
   - uploads skip anything Immich already has (SHA-1 check);
   - NEF+JPG pairs are stacked;
   - picks become favorites and a `RinkSide/Pick` tag;
@@ -83,7 +88,8 @@ the card after a reload.
    both rosters. Under **Cameras**, a body whose clock was off gets a fix like `+2:05`.
 3. Cull with `→`, `P`, `X` and `1`–`5`. Caption with `Enter`, then `23 a12`, then
    `Shift+Enter`. Press `Shift+W` on a photo with lots of ice to set the white balance.
-4. Use **Export** (`Ctrl+E`) for the agency, and **Sync** to put the picks in Immich.
+4. Use **Export** (`Ctrl+E`) for the agency, or choose **Send to: Immich** for the edited
+   versions. Use **Sync** to put the originals in Immich.
 
 | Keys | |
 |---|---|

@@ -66,6 +66,7 @@ const assetDto = (a) => ({
   fileCreatedAt: a.fileCreatedAt,
   isFavorite: a.isFavorite,
   visibility: a.visibility,
+  isTrashed: Boolean(a.isTrashed),
   checksum: a.checksum,
   exifInfo: { ...a.exifInfo, description: a.description, rating: a.rating },
   tags: [...a.tags].map((id) => db.tags.get(id)),
@@ -94,6 +95,10 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   let m;
+  if ((m = p.match(/^\/__asset\/(.+)$/))) {
+    const a = db.assets.get(m[1]);
+    return a?.bytes ? send(res, 200, a.bytes, 'image/jpeg') : send(res, 404, { message: 'no bytes' });
+  }
   if (p === '/__state') {
     return send(res, 200, {
       assets: [...db.assets.values()].map((a) => ({ ...assetDto(a), description: a.description, rating: a.rating, sidecar: a.sidecar || null, tags: [...a.tags].map((id) => db.tags.get(id).value) })),
@@ -180,11 +185,20 @@ const server = http.createServer(async (req, res) => {
       rating: null,
       tags: new Set(),
       sidecar: sidecar ? await sidecar.text() : null,
+      bytes: data.length < 8e6 ? data : null,
       exifInfo: {},
     });
     return send(res, 201, { id, status: 'created' });
   }
 
+  if (p === '/api/assets' && req.method === 'DELETE') {
+    const b = await json(req);
+    for (const id of b.ids || []) {
+      if (b.force) db.assets.delete(id);
+      else if (db.assets.has(id)) db.assets.get(id).isTrashed = true;
+    }
+    return send(res, 204, '', 'text/plain');
+  }
   if (p === '/api/assets' && req.method === 'PUT') {
     const b = await json(req);
     if (!Array.isArray(b.ids)) return bad(res, 'ids must be an array');
@@ -232,6 +246,9 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/stacks' && req.method === 'POST') {
     const { assetIds } = await json(req);
     if (!Array.isArray(assetIds) || assetIds.length < 2) return bad(res, 'assetIds must contain at least 2 elements');
+    // Like Immich: assets already in a stack are moved, and emptied stacks go away.
+    for (const old of db.stacks) old.assetIds = old.assetIds.filter((id) => !assetIds.includes(id));
+    db.stacks = db.stacks.filter((x) => x.assetIds.length >= 2);
     const stack = { id: uuid(), primaryAssetId: assetIds[0], assetIds };
     db.stacks.push(stack);
     return send(res, 201, stack);
