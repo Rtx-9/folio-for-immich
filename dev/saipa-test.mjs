@@ -17,19 +17,30 @@ check('SAIPA page is served', (await fetch(`${BASE}/saipa`)).status === 200);
 check('API requires sign-in', (await fetch(`${BASE}/_folio/api/saipa/state`)).status === 401);
 
 const { data: folders } = await api('/folders');
-const hockey = folders.folders.find((f) => /\/Hockey$/.test(f)) || '/mnt/photos/Hockey';
+const hockey = '/mnt/photos/Hockey';
 check('parent folders can be picked', folders.folders.includes(hockey) && folders.folders.some((f) => f.includes('/Hockey/2026-27/')), JSON.stringify(folders).slice(0, 200));
+check('Immich’s internal upload folders are hidden', !folders.folders.some((f) => f.includes('/upload')) && folders.hidden > 0, JSON.stringify(folders).slice(0, 300));
 
-await api('/settings', { method: 'PUT', body: { folder: hockey, subfolders: true } });
-let status;
-for (let i = 0; i < 120; i++) {
-  status = (await api('/status')).data;
-  if (status.state === 'done' || status.state === 'error') break;
-  await sleep(500);
+async function syncWith(settings) {
+  const put = await api('/settings', { method: 'PUT', body: settings });
+  if (put.status !== 200) return { put };
+  let status;
+  await sleep(300);
+  for (let i = 0; i < 160; i++) {
+    status = (await api('/status')).data;
+    if (status.state === 'done' || status.state === 'error') break;
+    await sleep(500);
+  }
+  return { put, status, lib: (await api('/library')).data };
 }
-check('sync finishes', status.state === 'done', JSON.stringify(status));
 
-const { data: lib } = await api('/library');
+// Source 1: an album (the usual setup when photos are uploaded to Immich).
+const albums = (await (await fetch(`${BASE}/_folio/api/albums`, { headers: H })).json()).albums;
+const saipaAlbum = albums.find((a) => a.name.startsWith('SaiPa'));
+const { status, lib } = await syncWith({ source: 'album', albumIds: [saipaAlbum.id] });
+check('sync from an album finishes', status.state === 'done', JSON.stringify(status));
+check('empty album choice is refused and nothing changes', (await api('/settings', { method: 'PUT', body: { source: 'album', albumIds: [] } })).status === 400 && (await api('/state')).data.settings.albumIds[0] === saipaAlbum.id);
+
 const games = lib.sections.filter((s) => s.kind === 'game');
 const days = lib.sections.filter((s) => s.kind === 'day');
 check('photos are sorted into 6 real SaiPa games', games.length === 6, games.map((g) => `${g.game.home.name}-${g.game.away.name} ${g.date}`).join(', '));
@@ -61,6 +72,16 @@ const details = await Promise.all(karpat.items.map((it) => api(`/asset/${it[0]}`
 check('photos without IPTC report it', details.some((d) => d.data.meta === null && d.data.checked) && details.some((d) => d.data.meta?.caption), '');
 check('original download streams', (await fetch(`${BASE}/_folio/api/saipa/original/${firstId}`, { headers: H })).status === 200);
 check('unknown photo is refused', (await api('/asset/00000000-0000-4000-a000-000000000000')).status === 404);
+
+// Source 2: every photo in the library taken during a SaiPa game (no setup).
+const auto = await syncWith({ source: 'games' });
+const autoGames = auto.lib.sections.filter((s) => s.kind === 'game');
+check('“every game photo” finds the game photos without an album', auto.status.state === 'done' && autoGames.length >= 6 && autoGames.reduce((n, s) => n + s.items.length, 0) >= 61, JSON.stringify(auto.status));
+check('“every game photo” skips non-game days', auto.lib.sections.every((s) => s.kind === 'game'));
+
+// Source 3: a folder (external libraries).
+const byFolder = await syncWith({ source: 'folder', folder: hockey, subfolders: true });
+check('a folder with subfolders works too', byFolder.status.state === 'done' && byFolder.lib.photos === 67, String(byFolder.lib?.photos));
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nAll checks passed');
 process.exit(failures ? 1 : 0);

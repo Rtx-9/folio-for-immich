@@ -647,45 +647,148 @@ function folderPicker(current, onPick) {
   const filter = h('input', { class: 'input', placeholder: 'Filter folders, e.g. saipa or hockey', 'aria-label': 'Filter folders' });
   const list = h('div', { class: 'folder-list', role: 'radiogroup' }, h('div', { class: 'loading' }, h('div', { class: 'spinner' })));
   let folders = [];
+  let hidden = 0;
   const draw = () => {
     const q = fold(filter.value);
     const shown = folders.filter((f) => fold(f).includes(q)).slice(0, 400);
     list.replaceChildren(
       ...(shown.length
-        ? shown.map((f) =>
+        ? shown.map((f) => h('label', {}, h('input', { type: 'radio', name: 'folder', value: f, checked: f === current, onchange: () => onPick(f) }), f))
+        : [
             h(
-              'label',
-              {},
-              h('input', { type: 'radio', name: 'folder', value: f, checked: f === current, onchange: () => onPick(f) }),
-              f,
+              'div',
+              { class: 'none' },
+              folders.length
+                ? 'No folder matches.'
+                : hidden
+                  ? 'Your photos are in Immich’s own upload storage, whose folders have random names. Use “An album” or “Every game photo” instead — folders only work for external libraries.'
+                  : 'Immich has no folders yet.',
             ),
-          )
-        : [h('div', { class: 'none' }, folders.length ? 'No folder matches.' : 'Immich has no folders yet. Folders appear once photos are uploaded or imported from a library.')]),
+          ]),
     );
   };
   filter.addEventListener('input', draw);
   api('/saipa/folders')
     .then((d) => {
       folders = d.folders;
+      hidden = d.hidden || 0;
       draw();
     })
     .catch((err) => list.replaceChildren(h('div', { class: 'none' }, err.message)));
   return h('div', {}, filter, list);
 }
 
+function albumChooser(selected, onChange) {
+  const chosen = new Set(selected);
+  const filter = h('input', { class: 'input', placeholder: 'Filter albums', 'aria-label': 'Filter albums' });
+  const count = h('small');
+  const list = h('div', { class: 'album-choose' }, h('div', { class: 'loading' }, h('div', { class: 'spinner' })));
+  let albums = [];
+  const update = () => {
+    count.textContent = chosen.size ? `${chosen.size} selected` : 'Pick one or more';
+    onChange([...chosen]);
+  };
+  const draw = () => {
+    const q = fold(filter.value);
+    const shown = albums.filter((a) => fold(a.name).includes(q));
+    list.replaceChildren(
+      ...(shown.length
+        ? shown.map((a) =>
+            h(
+              'label',
+              { class: 'album-opt' },
+              h('input', {
+                type: 'checkbox',
+                checked: chosen.has(a.id),
+                onchange: (e) => {
+                  e.target.checked ? chosen.add(a.id) : chosen.delete(a.id);
+                  update();
+                },
+              }),
+              a.thumb ? h('img', { src: thumb(a.thumb), alt: '', loading: 'lazy' }) : h('span', { class: 'album-opt-empty' }),
+              h('span', { class: 'album-opt-text' }, h('b', {}, a.name || 'Untitled'), h('small', {}, [plural(a.count, 'photo', 'photos'), a.dateText].filter(Boolean).join(' · '))),
+            ),
+          )
+        : [h('div', { class: 'none' }, albums.length ? 'No album matches.' : 'You have no albums yet. Create one in Immich (Albums → Create album) and add your hockey photos to it.')]),
+    );
+  };
+  filter.addEventListener('input', draw);
+  api('/albums')
+    .then((d) => {
+      albums = d.albums;
+      // Likely candidates first.
+      albums.sort((x, y) => Number(/saipa|lätkä|latka|kiekko|hockey|liiga/i.test(y.name)) - Number(/saipa|lätkä|latka|kiekko|hockey|liiga/i.test(x.name)));
+      draw();
+      update();
+    })
+    .catch((err) => list.replaceChildren(h('div', { class: 'none' }, err.message)));
+  return h('div', {}, h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Albums', count), filter, list);
+}
+
+const SOURCE_INFO = {
+  album: { title: 'An album', text: 'Put your hockey photos in an Immich album (e.g. “SaiPa”). New photos you add show up on the next sync.', badge: 'Recommended' },
+  games: { title: 'Every game photo', text: 'No setup: any photo in your library taken during a SaiPa game is included.' },
+  folder: { title: 'A folder', text: 'For external libraries, where folders keep their real names.' },
+};
+
 function settingsFields(s) {
-  const values = { ...s };
-  const subfolders = h('input', { type: 'checkbox', class: 'switch', checked: s.subfolders, onchange: (e) => (values.subfolders = e.target.checked) });
+  const values = { ...s, albumIds: [...(s.albumIds || [])] };
+  if (!values.source) values.source = 'album';
+  const panel = h('div', { class: 'source-panel' });
+  const drawPanel = () => {
+    if (values.source === 'album') panel.replaceChildren(albumChooser(values.albumIds, (ids) => (values.albumIds = ids)));
+    else if (values.source === 'folder') {
+      const subfolders = h('input', { type: 'checkbox', class: 'switch', checked: values.subfolders, onchange: (e) => (values.subfolders = e.target.checked) });
+      panel.replaceChildren(
+        h('div', { class: 'field' }, h('div', { class: 'label' }, 'Folder'), folderPicker(values.folder, (f) => (values.folder = f))),
+        h('label', { class: 'switch-row', style: { marginTop: '8px' } }, h('span', { class: 'text' }, 'Include subfolders', h('small', {}, 'e.g. one folder per game or per season')), subfolders),
+      );
+    } else {
+      panel.replaceChildren(
+        h(
+          'div',
+          { class: 'notice' },
+          icon('info'),
+          h('p', {}, 'SAIPA looks through your whole library for photos taken during SaiPa games (using the times below). Photos from other events at the same time would be included too — use an album if that’s a problem.'),
+        ),
+      );
+    }
+  };
+  const cards = h(
+    'div',
+    { class: 'source-cards', role: 'radiogroup', 'aria-label': 'Where are your hockey photos?' },
+    Object.entries(SOURCE_INFO).map(([key, info]) =>
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'source-card',
+          role: 'radio',
+          'aria-checked': String(values.source === key),
+          onclick: () => {
+            values.source = key;
+            cards.querySelectorAll('.source-card').forEach((c) => c.setAttribute('aria-checked', String(c.dataset.source === key)));
+            drawPanel();
+          },
+          'data-source': key,
+        },
+        h('b', {}, info.title, info.badge ? h('em', {}, info.badge) : null),
+        h('span', {}, info.text),
+      ),
+    ),
+  );
+  drawPanel();
   const num = (key, label, hint) =>
     h('div', { class: 'field' }, h('div', { class: 'label' }, label), h('input', { class: 'input', type: 'number', value: s[key], oninput: (e) => (values[key] = Number(e.target.value)) }), hint ? h('p', { class: 'hint' }, hint) : null);
   const el = h(
     'div',
     {},
-    h('div', { class: 'field' }, h('div', { class: 'label' }, 'Hockey folder', h('small', {}, 'All photos in it are sorted into games')), folderPicker(s.folder, (f) => (values.folder = f))),
-    h('label', { class: 'switch-row', style: { marginTop: '8px' } }, h('span', { class: 'text' }, 'Include subfolders', h('small', {}, 'e.g. one folder per game or per season')), subfolders),
+    h('div', { class: 'label', style: { marginBottom: '8px' } }, 'Where are your hockey photos?'),
+    cards,
+    panel,
     h(
       'div',
-      { class: 'num-row', style: { marginTop: '12px' } },
+      { class: 'num-row', style: { marginTop: '18px' } },
       num('before', 'Minutes before', 'Warm-ups'),
       num('after', 'Minutes after', 'Game + celebrations'),
       num('clockOffset', 'Camera clock fix', 'Minutes to add'),
@@ -717,7 +820,8 @@ function renderSetup() {
   const { el, values } = settingsFields(state.info.settings);
   const go = h('button', { class: 'btn btn-primary', style: { marginTop: '18px' } }, 'Start');
   go.addEventListener('click', async () => {
-    if (!values.folder) return toast('Pick a folder first', { error: true });
+    if (values.source === 'album' && !values.albumIds.length) return toast('Pick at least one album', { error: true });
+    if (values.source === 'folder' && !values.folder) return toast('Pick a folder', { error: true });
     go.disabled = true;
     try {
       state.info = await api('/saipa/settings', { method: 'PUT', body: values });
@@ -733,7 +837,7 @@ function renderSetup() {
       { class: 'sp-setup' },
       h('img', { src: '/_folio/static/saipa-icon.svg', width: 64, height: 64, alt: '', class: 'brand-icon' }),
       h('h1', {}, 'Your SaiPa photo archive'),
-      h('p', {}, 'Pick the Immich folder where you keep your hockey photos. SAIPA sorts them into SaiPa games using Liiga’s schedule, reads their IPTC captions, and makes everything searchable.'),
+      h('p', {}, 'SAIPA sorts your hockey photos into SaiPa games using Liiga’s schedule, reads their IPTC captions, and makes everything searchable.'),
       el,
       go,
     ),
@@ -744,7 +848,7 @@ function renderSetup() {
 
 async function start() {
   state.info = await api('/saipa/state');
-  if (!state.info.settings.folder) return renderSetup();
+  if (!state.info.ready) return renderSetup();
   renderShell();
   showStatus(state.info.status);
   refs.main.replaceChildren(h('div', { class: 'loading' }, h('div', { class: 'spinner' })));

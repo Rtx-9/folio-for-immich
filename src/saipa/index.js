@@ -16,7 +16,13 @@ import { SearchIndex } from './search.js';
 
 const dir = path.join(config.dataDir, 'saipa');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DEFAULTS = { folder: null, subfolders: true, clockOffset: 0, before: 60, after: 210, team: 'saipa' };
+// source: 'album' (one or more Immich albums), 'games' (every photo in the library taken
+// during a SaiPa game) or 'folder' (a folder, for external libraries).
+const DEFAULTS = { source: null, albumIds: [], folder: null, subfolders: true, clockOffset: 0, before: 60, after: 210, team: 'saipa' };
+const SOURCES = ['album', 'games', 'folder'];
+
+export const configured = (s) =>
+  (s.source === 'album' && s.albumIds.length > 0) || s.source === 'games' || (s.source === 'folder' && Boolean(s.folder));
 const AUTO_SYNC_MS = 10 * 60e3;
 
 // ---- per-user library ------------------------------------------------------------------
@@ -34,6 +40,7 @@ function library(userId) {
     data = { settings: { ...DEFAULTS }, assets: {}, syncedAt: null };
   }
   data.settings = { ...DEFAULTS, ...data.settings };
+  if (!data.settings.source && data.settings.folder) data.settings.source = 'folder'; // set up before sources existed
   lib = { file, data, version: 0, timer: null, built: null, index: null };
   libraries.set(userId, lib);
   return lib;
@@ -85,6 +92,54 @@ async function listFolder(auth, root, subfolders) {
     if (Array.isArray(list)) assets.push(...list);
   });
   return assets;
+}
+
+// Every asset matching a metadata search, page by page.
+async function searchAll(auth, filter) {
+  const out = [];
+  for (let page = 1; page; ) {
+    const result = await immich.api('POST', '/search/metadata', { auth, body: { ...filter, page, size: 1000 } });
+    out.push(...(result?.assets?.items || []));
+    const next = Number(result?.assets?.nextPage);
+    page = Number.isFinite(next) && next > page ? next : 0;
+  }
+  return out;
+}
+
+// Photos taken around SaiPa games anywhere in the library. Only months that have
+// photos are searched. The search window is widened by 4 hours because cameras
+// without a time zone can make Immich's UTC times a few hours off; the exact
+// matching happens later, on the camera's local clock.
+async function listGamePhotos(auth, s) {
+  const buckets = (await immich.timelineBuckets({ visibility: 'timeline' }, { auth })) || [];
+  const months = new Set(buckets.map((b) => String(b.timeBucket).slice(0, 7)));
+  const seasons = [...new Set([...months].map((m) => seasonOf(`${m}-01`)))];
+  const games = (await Promise.all(seasons.map((season) => seasonGames(season, s.team)))).flat();
+  const wanted = games.filter((g) => months.has(g.local.slice(0, 7)) && Date.parse(g.start) < Date.now());
+  const pad = 4 * 3600e3;
+  const found = [];
+  await mapLimit(wanted, 4, async (g) => {
+    const start = Date.parse(g.start);
+    const items = await searchAll(auth, {
+      takenAfter: new Date(start - s.before * 60e3 - pad).toISOString(),
+      takenBefore: new Date(start + s.after * 60e3 + pad).toISOString(),
+    });
+    found.push(...items);
+  });
+  return found;
+}
+
+async function listSource(auth, s) {
+  let assets;
+  if (s.source === 'album') {
+    assets = [];
+    for (const albumId of s.albumIds) assets.push(...(await searchAll(auth, { albumIds: [albumId] })));
+  } else if (s.source === 'games') {
+    assets = await listGamePhotos(auth, s);
+  } else {
+    assets = await listFolder(auth, s.folder, s.subfolders);
+  }
+  return [...new Map(assets.map((a) => [a.id, a])).values()];
 }
 
 function rowFrom(a) {
@@ -175,8 +230,7 @@ function startSync(userId, auth) {
   jobs.set(userId, status);
 
   (async () => {
-    const { folder, subfolders } = lib.data.settings;
-    const listed = await listFolder(auth, folder, subfolders);
+    const listed = await listSource(auth, lib.data.settings);
     const seen = new Set();
     for (const a of listed) {
       if (a.isTrashed || !UUID.test(a.id)) continue;
@@ -264,7 +318,8 @@ async function build(lib) {
       gameOf.set(id, best.g);
       if (!byGame.has(best.g.id)) byGame.set(best.g.id, { game: best.g, items: [] });
       byGame.get(best.g.id).items.push(item);
-    } else {
+    } else if (s.source !== 'games') {
+      // ("games" only collects photos around game times; leftovers aren't hockey.)
       const day = new Date(t).toISOString().slice(0, 10);
       if (!byDay.has(day)) byDay.set(day, []);
       byDay.get(day).push(item);
@@ -320,6 +375,7 @@ function stateView(userId) {
   const lib = library(userId);
   return {
     settings: lib.data.settings,
+    ready: configured(lib.data.settings),
     syncedAt: lib.data.syncedAt,
     photos: Object.keys(lib.data.assets).length,
     withMetadata: Object.values(lib.data.assets).filter((a) => a.m).length,
@@ -335,38 +391,50 @@ export async function saipaApi(req, res, url, sub, auth) {
 
   if (sub === '/state' && method === 'GET') {
     const s = lib.data.settings;
-    if (s.folder && (!lib.data.syncedAt || Date.now() - lib.data.syncedAt > AUTO_SYNC_MS)) startSync(userId, auth);
+    if (configured(s) && (!lib.data.syncedAt || Date.now() - lib.data.syncedAt > AUTO_SYNC_MS)) startSync(userId, auth);
     return sendJson(res, 200, stateView(userId));
   }
   if (sub === '/status' && method === 'GET') return sendJson(res, 200, syncStatus(userId));
   if (sub === '/sync' && method === 'POST') {
-    if (!lib.data.settings.folder) throw new HttpError(400, 'Choose your hockey folder first.');
+    if (!configured(lib.data.settings)) throw new HttpError(400, 'Choose where your hockey photos are first.');
     return sendJson(res, 200, startSync(userId, auth));
   }
   if (sub === '/folders' && method === 'GET') {
     // Immich only lists folders that directly hold photos; add their parents too,
     // so a top folder like /photos/Hockey (with one subfolder per game) can be picked.
+    // Immich's own storage (upload/<user id>/ab/cd, thumbs, …) has meaningless names: hide it.
+    const internal = /\/(upload|library|thumbs|encoded-video|profile|backups)\/[0-9a-f-]{36}(\/|$)|\/(upload|thumbs|encoded-video)$/i;
     const paths = (await immich.api('GET', '/view/folder/unique-paths', { auth })) || [];
     const all = new Set();
+    let hidden = 0;
     for (const p of paths.map(trimSlash)) {
+      if (internal.test(p)) {
+        hidden++;
+        continue;
+      }
       const parts = p.split('/');
       for (let i = parts.length; i > 1; i--) all.add(parts.slice(0, i).join('/') || '/');
     }
-    return sendJson(res, 200, { folders: [...all].filter((f) => f && f !== '/').sort((a, b) => a.localeCompare(b)) });
+    return sendJson(res, 200, { folders: [...all].filter((f) => f && f !== '/').sort((a, b) => a.localeCompare(b)), hidden });
   }
   if (sub === '/settings' && method === 'PUT') {
     const body = await readJson(req);
-    const s = lib.data.settings;
-    const int = (v, min, max, fallback) => (Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Math.round(Number(v)))) : fallback);
-    const folderChanged = typeof body.folder === 'string' && trimSlash(body.folder) !== s.folder;
+    const s = { ...lib.data.settings }; // validated as a copy, saved only if usable
+    const int =(v, min, max, fallback) => (Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Math.round(Number(v)))) : fallback);
+    const before = JSON.stringify([s.source, s.albumIds, s.folder, s.subfolders, s.before, s.after]);
+    if (SOURCES.includes(body.source)) s.source = body.source;
+    if (Array.isArray(body.albumIds)) s.albumIds = [...new Set(body.albumIds.filter((id) => typeof id === 'string' && UUID.test(id)))].slice(0, 200);
     if (typeof body.folder === 'string' && body.folder.trim()) s.folder = trimSlash(body.folder.trim()).slice(0, 1000);
     if (typeof body.subfolders === 'boolean') s.subfolders = body.subfolders;
     s.clockOffset = int(body.clockOffset, -1440, 1440, s.clockOffset);
     s.before = int(body.before, 0, 600, s.before);
     s.after = int(body.after, 30, 720, s.after);
+    if (!configured(s)) throw new HttpError(400, s.source === 'album' ? 'Pick at least one album.' : s.source === 'folder' ? 'Pick a folder.' : 'Choose where your hockey photos are.');
+    lib.data.settings = s;
     changed(lib);
     persist(lib, true);
-    if (folderChanged || body.subfolders !== undefined) startSync(userId, auth);
+    // Which photos belong to the archive changed: look again.
+    if (before !== JSON.stringify([s.source, s.albumIds, s.folder, s.subfolders, s.before, s.after])) startSync(userId, auth);
     return sendJson(res, 200, stateView(userId));
   }
 

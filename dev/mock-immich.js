@@ -50,7 +50,8 @@ const ALBUMS = [
   }));
   return { ...a, id, assets };
 });
-for (const album of ALBUMS) for (const a of album.assets) a.path = `/mnt/photos/Library/${album.name}/IMG_${a.id.slice(0, 4)}.jpg`;
+// Uploaded photos live in Immich's own storage, in folders with meaningless names.
+for (const album of ALBUMS) for (const a of album.assets) a.path = `/data/upload/${album.owner.id}/${a.id.slice(0, 2)}/${a.id.slice(2, 4)}/${a.id}.jpg`;
 
 // A hockey folder for SAIPA, shot at real SaiPa games (local Finnish time), plus a
 // training day that isn't a game. Most photos carry IPTC, some only XMP, some nothing.
@@ -74,7 +75,9 @@ const CAPTIONS = [
   () => 'Petrus Palmu ja Santeri Airola tuulettavat',
 ];
 const TRAINING = ['Aamuharjoitukset Kisapuiston hallissa', 'Valmentaja ohjeistaa', 'Kari Piiroinen maalivahtiharjoituksissa'];
-const hockey = { name: 'Hockey folder', owner: me, hidden: true, desc: '', id: uuid('hockey-folder'), assets: [] };
+// The hockey photos come from an external library (real folder names) and are
+// also collected in an album, so all three SAIPA sources can be tested.
+const hockey = { name: 'SaiPa 2025–2027', owner: me, desc: '', id: uuid('hockey-folder'), assets: [] };
 HOCKEY_SHOOTS.forEach((shoot, si) => {
   const rand = rng(100 + si);
   const start = Date.parse(`${shoot.local}:00Z`);
@@ -384,6 +387,23 @@ http
           ...assetDto(hit.asset, hit.album),
           exifInfo: { make: 'Canon', model: 'EOS R3', lensModel: 'RF70-200mm F2.8 L IS USM', focalLength: 135, fNumber: 2.8, exposureTime: '1/1000', iso: 6400, exifImageWidth: Math.round(hit.asset.ratio * 4000), exifImageHeight: 4000, fileSizeInByte: 9_800_000, description: hit.asset.meta?.caption || null },
         });
+      }
+
+      if (p === '/api/search/metadata' && req.method === 'POST') {
+        if (!authed(req)) return json(res, 401, { message: 'Authentication required' });
+        const body = await readBody(req);
+        const after = body.takenAfter ? Date.parse(body.takenAfter) : -Infinity;
+        const before = body.takenBefore ? Date.parse(body.takenBefore) : Infinity;
+        const hits = [...assetIndex.values()]
+          .filter((hit) => hit.album.owner === me)
+          .filter((hit) => !body.albumIds?.length || body.albumIds.includes(hit.album.id))
+          .filter((hit) => Date.parse(hit.asset.date) >= after && Date.parse(hit.asset.date) <= before)
+          .sort((x, y) => y.asset.date.localeCompare(x.asset.date));
+        const size = Math.min(1000, body.size || 250);
+        const page = body.page || 1;
+        const items = hits.slice((page - 1) * size, page * size).map((hit) => assetDto(hit.asset, hit.album));
+        const nextPage = page * size < hits.length ? String(page + 1) : null;
+        return json(res, 200, { albums: { items: [], total: 0, count: 0 }, assets: { items, total: hits.length, count: items.length, nextPage } });
       }
 
       if (p === '/api/search/smart' && req.method === 'POST') {

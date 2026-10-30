@@ -38,8 +38,13 @@ clients, guests or family.
 
 <img src="public/saipa-icon.svg" width="40" align="left" alt="">
 
-A second sidebar item, **SAIPA**, turns one Immich folder of hockey photos into an archive
-sorted by **SaiPa game** instead of by day.
+A second sidebar item, **SAIPA**, turns your hockey photos into an archive sorted by
+**SaiPa game** instead of by day. On first open you choose where the photos are:
+
+- **An album** (recommended): put your hockey photos in one or more Immich albums, e.g. “SaiPa”.
+- **Every game photo**: no setup; any photo in your library taken during a SaiPa game.
+- **A folder**: for external libraries. Photos uploaded to Immich live in its own storage
+  (`upload/<user id>/ab/cd`) whose folder names mean nothing, so those are hidden.
 
 - Each photo's camera time is matched to SaiPa's schedule from **Liiga's game feed**
   (regular season, playoffs and preseason). You get sections like
@@ -52,9 +57,8 @@ sorted by **SaiPa game** instead of by day.
 - **Forgiving search** over captions, keywords, names, opponents, arenas and dates.
   “Kari torjunta” finds *“Kari Piiroinen torjuu maalin SaiPa–Kärpät-pelissä”*. It handles
   Finnish word forms, missing ä/ö (“karpat”) and small typos (“Niinisari”).
-- First open: pick the folder (subfolders included). Camera clock off by an hour? Set a
-  clock fix in settings. The first sync reads the start of every JPEG (about 200 KB each),
-  then only new photos.
+- Camera clock off by an hour? Set a clock fix in settings (⚙). The first sync reads the
+  start of every JPEG (about 200 KB each); after that only new photos.
 
 ## How it works
 

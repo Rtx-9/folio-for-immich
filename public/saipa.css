@@ -575,3 +575,109 @@
 .num-row .field + .field {
   margin-top: 0;
 }
+
+/* source chooser */
+.source-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.source-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.source-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+}
+.source-card[aria-checked='true'] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.source-card b {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.source-card em {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--sp-yellow);
+  color: #111;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+}
+.source-card span {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.album-choose {
+  max-height: 340px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.album-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.album-opt:hover {
+  background: var(--bg-2);
+}
+.album-opt input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+.album-opt img,
+.album-opt-empty {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  object-fit: cover;
+}
+.album-opt-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.album-opt-text b {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.album-opt-text small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.album-choose .none {
+  padding: 16px;
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .source-cards {
+    grid-template-columns: 1fr;
+  }
+}
