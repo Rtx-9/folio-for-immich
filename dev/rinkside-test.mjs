@@ -39,7 +39,7 @@ const pillow = (...files) => JSON.parse(execFileSync(PY, [path.join(dev, 'check_
 console.log('Captions, rosters, IPTC digest');
 const roster = C.parseRoster('23 Matti Virtanen\n#12 Joni Ikonen\n7. Aku Ankka\nKalle Kiekko 31\n\n');
 check('roster lines in several formats', roster.length === 4 && roster[2].num === '7' && roster[3].num === '31' && roster[3].name === 'Kalle Kiekko', roster);
-const game = { home: 'HIFK', away: 'Tappara', league: 'Liiga', venue: 'Helsinki Ice Hall', city: 'Helsinki', dateStyle: 'en-US' };
+const game = { home: 'HIFK', away: 'Tappara', league: 'Liiga', venue: 'Helsinki Ice Hall', city: 'Helsinki', dateStyle: 'en-US', template: C.ENGLISH_TEMPLATE };
 const rosters = { HIFK: C.parseRoster('23 Matti Virtanen\n7 Aku Ankka\n31 Kalle Kiekko'), Tappara: C.parseRoster('12 Joni Ikonen\n4 Ville Varis\n88 Pekka Puck') };
 const t = Date.UTC(2026, 9, 29, 18, 31, 5);
 const cap = (frame, g = game) => C.captionFor({ t, ...frame }, g, rosters);
@@ -48,6 +48,11 @@ check('empty league and arena are cleaned up', cap({ players: '23' }, { ...game,
 check('no players: sentence starts with a capital', cap({ players: '' }).startsWith('During the Liiga game'));
 check('empty city leaves no double comma', cap({ players: 'a4' }, { ...game, city: '' }) === 'Ville Varis (Tappara) during the Liiga game between HIFK and Tappara at Helsinki Ice Hall, on October 29, 2026.');
 check('Finnish date style', cap({ players: '23 a12 7' }, { ...game, dateStyle: 'fi' }).includes('Matti Virtanen (HIFK), Joni Ikonen (Tappara) ja Aku Ankka (HIFK)') && cap({}, { ...game, dateStyle: 'fi' }).endsWith('29.10.2026.'));
+const fiGame = { home: 'HIFK', away: 'Tappara', league: 'Liiga', venue: 'Helsingin jäähalli', city: 'Helsinki' };
+check('Finnish is the default caption', C.captionFor({ t, players: '23 a12' }, fiGame, rosters) === 'Matti Virtanen (HIFK) ja Joni Ikonen (Tappara) ottelussa HIFK – Tappara, Liiga, Helsingin jäähalli, Helsinki, 29.10.2026.', C.captionFor({ t, players: '23 a12' }, fiGame, rosters));
+check('Finnish caption without players or league', C.captionFor({ t }, { ...fiGame, league: '' }, rosters) === 'Ottelussa HIFK – Tappara, Helsingin jäähalli, Helsinki, 29.10.2026.');
+check('Finnish long date', C.formatDate(t, 'fi-long') === '29. lokakuuta 2026');
+check('Finnish file name codes', C.fileName(C.DEFAULT_PATTERN, { t, name: 'DSC_0001' }, { home: 'Kärpät', away: 'HIFK' }, 7) === '2026-10-29_Karpat-HIFK_007');
 check('Photo Mechanic codes \\23\\ and \\a12\\', cap({ caption: '\\23\\ scores past \\a12\\ at {venue}' }) === 'Matti Virtanen scores past Joni Ikonen at Helsinki Ice Hall');
 check('unknown code stays visible', cap({ caption: 'Save by \\a99\\' }) === 'Save by \\a99\\');
 check('file name pattern', C.fileName('{date}_{home}-{away}_{seq}', { t, name: 'DSC_0001' }, { home: 'Kärpät', away: 'HIFK' }, 7) === '2026-10-29_Karpat-HIFK_007');
@@ -130,10 +135,10 @@ try {
   await page.wait(`document.querySelector('#liiga-games').options.length === 3`, 15000);
   check('the Liiga games of the photos’ day are listed', (await page.eval(`[...document.querySelector('#liiga-games').options].map((o) => o.text).join('|')`)).includes('HIFK – Tappara · 18:30 · Helsinki Ice Hall'));
   await page.eval(`(() => { const s = document.querySelector('#liiga-games'); s.value = '2027/2709999'; s.dispatchEvent(new Event('change')); })()`);
-  await page.wait(`/From liiga.fi/.test(document.querySelector('#liiga-status').textContent)`);
+  await page.wait(`/^liiga\\.fi:stä:/.test(document.querySelector('#liiga-status').textContent)`);
   if (shots) await page.screenshot(path.join(shots, '0-liiga.png'));
   const filled = await page.eval(`(() => { const f = document.querySelector('#setup-form').elements; return { home: f.home.value, away: f.away.value, league: f.league.value, venue: f.venue.value, city: f.city.value, country: f.country.value, rh: f.rosterHome.value, ra: f.rosterAway.value }; })()`);
-  check('choosing the game fills teams, league, arena and city', filled.home === 'HIFK' && filled.away === 'Tappara' && filled.league === 'Liiga' && filled.venue === 'Helsinki Ice Hall' && filled.city === 'Helsinki' && filled.country === 'Finland', filled);
+  check('choosing the game fills teams, league, arena and city', filled.home === 'HIFK' && filled.away === 'Tappara' && filled.league === 'Liiga' && filled.venue === 'Helsinki Ice Hall' && filled.city === 'Helsinki' && filled.country === 'Suomi', filled);
   check('both lineups come in (players marked removed left out)', filled.rh.split('\n').length === 4 && filled.rh.startsWith('7 Aku Ankka') && !/Dressed/.test(filled.rh) && filled.ra.split('\n').length === 3, filled);
   await page.eval(`(() => {
     const f = document.querySelector('#setup-form');
@@ -141,7 +146,7 @@ try {
     set('byline', 'Test Shooter'); set('credit', 'RinkSide Test'); set('copyright', '© 2026 Test Shooter'); set('keywords', 'ice hockey, jääkiekko');
     document.querySelector('#cameras input[data-cam=${JSON.stringify(d3Key)}][data-kind=offset]').value = '+2:05';
   })()`);
-  check('the template example updates as you type', /during the Liiga game between HIFK and Tappara/.test(await page.eval(`document.querySelector('#template-preview').textContent`)));
+  check('the template example is Finnish and updates as you type', /ottelussa HIFK – Tappara, Liiga, Helsinki Ice Hall/.test(await page.eval(`document.querySelector('#template-preview').textContent`)));
   await page.eval(`document.querySelector('#setup-form button[value=save]').click()`);
   await page.wait(`rinkside.S.sess.game.home === 'HIFK' && rinkside.S.rosters.HIFK?.length === 4`);
   const savedRoster = (await api('GET', '/rosters/Tappara')).data.players;
@@ -174,7 +179,7 @@ try {
   await page.type('23 a12');
   await page.key('Enter', { keyCode: 13, text: '\r' });
   await sleep(150);
-  check('caption preview names the players', (await page.eval('document.querySelector("#caption-preview").textContent')).startsWith('Matti Virtanen (HIFK) and Joni Ikonen (Tappara) during the Liiga game'));
+  check('caption preview names the players', (await page.eval('document.querySelector("#caption-preview").textContent')).startsWith('Matti Virtanen (HIFK) ja Joni Ikonen (Tappara) ottelussa HIFK – Tappara, Liiga'));
   await page.key('ArrowRight', { keyCode: 39 });
   await page.key('ArrowRight', { keyCode: 39 });
   await key('=', { keyCode: 187 });
@@ -214,9 +219,9 @@ try {
   check('Z zooms to 100%', Boolean(await page.eval('rinkside.S.zoom')));
   await key('z');
   const picks = await page.eval('rinkside.S.frames.filter((f) => f.flag === 1).length');
-  await page.eval('[...document.querySelectorAll("#filters button")].find((b) => b.textContent.startsWith("Picks")).click()');
+  await page.eval('[...document.querySelectorAll("#filters button")].find((b) => b.textContent.startsWith("Valitut")).click()');
   check('Picks filter shows only the 9 picks', (await page.eval('rinkside.S.order.length')) === picks && picks === 9, picks);
-  await page.eval('[...document.querySelectorAll("#filters button")].find((b) => b.textContent.startsWith("All")).click()');
+  await page.eval('[...document.querySelectorAll("#filters button")].find((b) => b.textContent.startsWith("Kaikki")).click()');
 
   // -------------------------------------------------------------- look and crop
   // -------------------------------------------------------------- Players tab
@@ -232,7 +237,7 @@ try {
   await tile('a88');
   await page.wait('rinkside.cur().players === "23 a88"');
   if (shots) await page.screenshot(path.join(shots, '0-players.png'));
-  check('clicking players writes them into the photo', /^Matti Virtanen \(HIFK\) and Pekka Puck \(Tappara\) during/.test(await page.eval('document.querySelector("#players-caption").textContent')));
+  check('clicking players writes them into the photo', /^Matti Virtanen \(HIFK\) ja Pekka Puck \(Tappara\) ottelussa/.test(await page.eval('document.querySelector("#players-caption").textContent')));
   await tile('23');
   await page.wait('rinkside.cur().players === "a88"');
   check('clicking again removes a player', true);
@@ -293,7 +298,7 @@ try {
   const level = await boardLine();
   check('the photo on screen is now level', Math.abs(tilted.left - tilted.right) > 8 && Math.abs(level.left - level.right) <= 2, { tilted, level });
   await page.eval('document.querySelector("#panel-tabs [data-tab=crop]").click()');
-  check('the Straighten slider shows the angle', (await page.eval('document.querySelector("#straighten-out").textContent')) === `+${fixed.angle.toFixed(1)}°`);
+  check('the Straighten slider shows the angle', (await page.eval('document.querySelector("#straighten-out").textContent')) === `+${fixed.angle.toFixed(1).replace('.', ',')}°`);
   await page.eval(`(() => { const s = document.querySelector('#straighten'); s.value = '0'; s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change')); })()`);
   await page.wait('rinkside.cur().crop === null');
   check('Straighten back to 0 removes the automatic crop', true);
@@ -359,9 +364,9 @@ try {
   await page.wait('document.querySelector("#dlg-export").open');
   await page.eval(`(() => { const f = document.querySelector('#export-form'); f.elements.scope.value = 'picks'; f.elements.longEdge.value = '1600'; f.elements.quality.value = '88'; f.elements.folder.value = 'Game'; f.elements.originals.checked = true; f.dispatchEvent(new Event('input')); })()`);
   await page.eval('document.querySelector("#export-go").click()');
-  await page.wait('/exported to/.test(document.querySelector("#export-progress .msg").textContent)', 90000);
+  await page.wait('/kuvaa viety/.test(document.querySelector("#export-progress .msg").textContent)', 90000);
   const exportMsg = await page.eval('document.querySelector("#export-progress .msg").textContent');
-  check('export finishes', /^9 photo\(s\) exported/.test(exportMsg) && !/failed/.test(exportMsg), exportMsg);
+  check('export finishes', /^9 kuvaa viety/.test(exportMsg) && !/epäonnistui/.test(exportMsg), exportMsg);
   if (shots) await page.screenshot(path.join(shots, '3-export.png'));
   await page.eval('document.querySelector("#dlg-export").close()');
   // Copy the exported files out of the browser to check them.
@@ -394,20 +399,20 @@ try {
   check('Pillow: IPTC caption, byline, copyright, credit, place, date', all((r) => r.iptc['Caption-Abstract'] && r.iptc['By-line'] === 'Test Shooter' && r.iptc.CopyrightNotice === '© 2026 Test Shooter' && r.iptc.Credit === 'RinkSide Test' && r.iptc.City === 'Helsinki' && r.iptc['Sub-location'] === 'Helsinki Ice Hall' && r.iptc.DateCreated === '20261029'), report[0].iptc);
   check('Pillow: IPTC keywords include game keywords, teams and players', report.some((r) => ['ice hockey', 'jääkiekko', 'Liiga', 'HIFK', 'Tappara', 'Matti Virtanen'].every((k) => r.iptc.Keywords?.includes(k))));
   check('Pillow: XMP matches IPTC', all((r) => r.xmp && r.xmp['dc:description'] === r.iptc['Caption-Abstract'] && r.xmp['dc:creator'] === 'Test Shooter' && r.xmp['photoshop:City'] === 'Helsinki'));
-  const first = report.find((r) => r.iptc['Caption-Abstract'].startsWith('Matti Virtanen (HIFK) and Joni Ikonen') && Math.abs(r.size[0] / r.size[1] - 0.8) < 0.01);
+  const first = report.find((r) => r.iptc['Caption-Abstract'].startsWith('Matti Virtanen (HIFK) ja Joni Ikonen') && Math.abs(r.size[0] / r.size[1] - 0.8) < 0.01);
   check('crop 4:5 applied to the exported pixels', Boolean(first), report.map((r) => r.size));
   const portraits = report.filter((r) => r.size[1] > r.size[0] && Math.abs(r.size[0] / r.size[1] - 2 / 3) < 0.01);
   check('portrait frames export upright', portraits.length === 2 && all((r) => r.top_brightness < 90), report.map((r) => [r.file, r.size, r.top_brightness]));
-  const bright = report.find((r) => r !== first && r.iptc['Caption-Abstract'].startsWith('Matti Virtanen (HIFK) and Joni Ikonen'));
-  const other = report.find((r) => r.iptc['Caption-Abstract'].startsWith('During') && r.size[0] > r.size[1]);
+  const bright = report.find((r) => r !== first && r.iptc['Caption-Abstract'].startsWith('Matti Virtanen (HIFK) ja Joni Ikonen'));
+  const other = report.find((r) => r.iptc['Caption-Abstract'].startsWith('Ottelussa') && r.size[0] > r.size[1]);
   check('a +1 EV photo look exports brighter', bright && other && bright.mean[0] > other.mean[0] + 15, [bright?.mean, other?.mean]);
   const z7 = report.find((r) => r.exif.DateTimeOriginal === '2026:10:29 18:45:12');
   check('a straightened photo exports at its fitted size, upright', z7 && z7.size[0] === 1600 && Math.abs(z7.size[0] / z7.size[1] - 1.5) < 0.01 && z7.top_brightness < 90, z7 && [z7.size, z7.top_brightness]);
-  check('NEF-only frame exports from its embedded preview', report.some((r) => r.iptc['Caption-Abstract'].startsWith('Joni Ikonen (Tappara) and Ville Varis') && r.size[0] === 1600));
-  const originals = fs.readdirSync(path.join(outDir, 'Originals')).sort();
+  check('NEF-only frame exports from its embedded preview', report.some((r) => r.iptc['Caption-Abstract'].startsWith('Joni Ikonen (Tappara) ja Ville Varis') && r.size[0] === 1600));
+  const originals = fs.readdirSync(path.join(outDir, 'Alkuperäiset')).sort();
   check('originals copied with sidecars; DSC_0002 from both bodies kept apart', ['DSC_0002.JPG', 'DSC_0002.NEF', 'DSC_0002.xmp', 'DSC_0002_D3.JPG', 'DSC_0002_D3.NEF', 'DSC_0002_D3.xmp', 'DSC_0004.NEF', 'DSC_0004_D3.NEF'].every((f) => originals.includes(f)), originals);
-  check('copied originals are byte-identical', fs.readFileSync(path.join(outDir, 'Originals', 'DSC_0002.NEF')).equals(fs.readFileSync(path.join(Z, 'DCIM', '100NZ50_', 'DSC_0002.NEF'))));
-  const sidecar = fs.readFileSync(path.join(outDir, 'Originals', 'DSC_0002.xmp'), 'utf8');
+  check('copied originals are byte-identical', fs.readFileSync(path.join(outDir, 'Alkuperäiset', 'DSC_0002.NEF')).equals(fs.readFileSync(path.join(Z, 'DCIM', '100NZ50_', 'DSC_0002.NEF'))));
+  const sidecar = fs.readFileSync(path.join(outDir, 'Alkuperäiset', 'DSC_0002.xmp'), 'utf8');
   check('sidecar has caption, 4-star rating and pick tag', /<dc:description>[\s\S]*Matti Virtanen/.test(sidecar) && /xmp:Rating="4"/.test(sidecar) && /photomechanic:Tagged="True"/.test(sidecar));
 
   // -------------------------------------------------------------- reopen: the card must be connected again
@@ -419,7 +424,7 @@ try {
   await page.wait(`document.querySelector('#card-input')`);
   await page.setFiles('#card-input', [D3]);
   await sleep(500);
-  check('the wrong card is refused', !(await page.eval(`document.querySelector('#reconnect').hidden`)) && /isn't Z50II/.test(await page.eval(`document.querySelector('#toast').textContent`)), await page.eval(`document.querySelector('#toast').textContent`));
+  check('the wrong card is refused', !(await page.eval(`document.querySelector('#reconnect').hidden`)) && /Tämä ei ole Z50II/.test(await page.eval(`document.querySelector('#toast').textContent`)), await page.eval(`document.querySelector('#toast').textContent`));
   await page.eval(`document.querySelector('#reconnect-btn').click()`);
   await page.wait(`document.querySelector('#card-input')`);
   await page.setFiles('#card-input', [Z]);
@@ -439,7 +444,7 @@ try {
       await page.eval(`(() => { const f = document.querySelector('#sync-form'); const o = ${JSON.stringify(options)}; for (const [k, v] of Object.entries(o)) { const el = f.elements[k]; if (el.type === 'checkbox') el.checked = v; else el.value = v; } })()`);
     }
     await page.eval('document.querySelector("#sync-go").click()');
-    await page.wait('!document.querySelector("#sync-go").disabled && /^(Done|Stopped)/.test(document.querySelector("#sync-progress .msg").textContent)', 90000);
+    await page.wait('!document.querySelector("#sync-go").disabled && /^(Valmis|Keskeytyi)/.test(document.querySelector("#sync-progress .msg").textContent)', 90000);
     const msg = await page.eval('document.querySelector("#sync-progress .msg").textContent');
     const errors = await page.eval('[...document.querySelectorAll("#sync-progress .errors li")].map((l) => l.textContent)');
     await page.eval('document.querySelector("#dlg-sync").close()');
@@ -449,39 +454,39 @@ try {
   let st = await mockState();
   const uploaded = st.assets.filter((a) => a.sidecar);
   const pickFiles = sess.frames.filter((f) => f.flag === 1).reduce((n, f) => n + (f.jpg ? 1 : 0) + (f.nef ? 1 : 0), 0);
-  check('picks uploaded straight from the card (JPG + NEF)', s.msg.startsWith(`Done: ${pickFiles} uploaded`) && uploaded.length === pickFiles && !s.errors.length, s);
+  check('picks uploaded straight from the card (JPG + NEF)', s.msg.startsWith(`Valmis: ${pickFiles} lähetetty`) && uploaded.length === pickFiles && !s.errors.length, s);
   check('uploads went through Folio with the Immich login (no API key)', st.auth.apiKey === 0 && st.auth.cookie > 20, st.auth);
   check('uploaded files are byte-identical to the card (SHA-1)', uploaded.some((a) => a.originalFileName === 'DSC_0005.NEF' && a.checksum === createHash('sha1').update(fs.readFileSync(path.join(Z, 'DCIM', '100NZ50_', 'DSC_0005.NEF'))).digest('base64')));
   check('RAW+JPG pairs are stacked, JPG on top', st.stacks.length === sess.frames.filter((f) => f.flag === 1 && f.jpg && f.nef).length && st.stacks.every((x) => /\.JPG$/.test(st.assets.find((a) => a.id === x.primaryAssetId).originalFileName)));
   check('picks became favorites', uploaded.every((a) => a.isFavorite));
   const zA = st.assets.filter((a) => a.originalFileName.startsWith('DSC_0001') && a.description?.startsWith('Matti'));
-  check('captions became descriptions', zA.length === 2 && zA[0].description.startsWith('Matti Virtanen (HIFK) and Joni Ikonen (Tappara) during the Liiga game'));
-  check('players, teams and pick tags', zA.every((a) => ['Players/Matti Virtanen', 'Players/Joni Ikonen', 'Teams/HIFK', 'Teams/Tappara', 'RinkSide/Pick'].every((x) => a.tags.includes(x))), zA.map((a) => a.tags));
+  check('captions became descriptions', zA.length === 2 && zA[0].description.startsWith('Matti Virtanen (HIFK) ja Joni Ikonen (Tappara) ottelussa HIFK – Tappara, Liiga'));
+  check('players, teams and pick tags', zA.every((a) => ['Pelaajat/Matti Virtanen', 'Pelaajat/Joni Ikonen', 'Joukkueet/HIFK', 'Joukkueet/Tappara', 'RinkSide/Valittu'].every((x) => a.tags.includes(x))), zA.map((a) => a.tags));
   check('stars became ratings', uploaded.filter((a) => a.rating === 4).length === 2);
-  const album = st.albums.find((a) => a.albumName === '2026-10-29 HIFK vs Tappara');
+  const album = st.albums.find((a) => a.albumName === '2026-10-29 HIFK – Tappara');
   check('game album created with every upload', album && album.assets.length === pickFiles);
   const before = st.log.filter((l) => l === 'POST /api/assets').length;
   s = await runSync();
   st = await mockState();
-  check('syncing again uploads nothing (checksums match)', s.msg.startsWith('Done: 0 uploaded') && st.log.filter((l) => l === 'POST /api/assets').length === before, s.msg);
+  check('syncing again uploads nothing (checksums match)', s.msg.startsWith('Valmis: 0 lähetetty') && st.log.filter((l) => l === 'POST /api/assets').length === before, s.msg);
   await api('PATCH', `/s/${sid}/frames`, { ids: [byName('Z50II', 'DSC_0001').id], set: { players: '7' } });
   await page.eval(`rinkside.S.byId.get(${JSON.stringify(byName('Z50II', 'DSC_0001').id)}).players = '7'`);
   s = await runSync();
   st = await mockState();
   const zB = st.assets.find((a) => a.id === zA[0].id);
-  check('changed players: description and tags follow, old tags removed', zB.description.startsWith('Aku Ankka (HIFK)') && zB.tags.includes('Players/Aku Ankka') && !zB.tags.includes('Players/Matti Virtanen'), zB);
+  check('changed players: description and tags follow, old tags removed', zB.description.startsWith('Aku Ankka (HIFK)') && zB.tags.includes('Pelaajat/Aku Ankka') && !zB.tags.includes('Pelaajat/Matti Virtanen'), zB);
   s = await runSync({ scope: 'all', includeRaw: false });
   st = await mockState();
   const rej = st.assets.find((a) => a.sidecar?.includes('xmp:Rating="-1"'));
-  check('full card: rejects archived with rating -1, not in the album', rej && rej.visibility === 'archive' && rej.rating === -1 && !st.albums.find((a) => a.albumName === '2026-10-29 HIFK vs Tappara').assets.includes(rej.id), s);
+  check('full card: rejects archived with rating -1, not in the album', rej && rej.visibility === 'archive' && rej.rating === -1 && !st.albums.find((a) => a.albumName === '2026-10-29 HIFK – Tappara').assets.includes(rej.id), s);
   check('nothing was deleted in Immich', !st.log.some((l) => l.startsWith('DELETE /api/assets')));
   sess = (await api('GET', `/s/${sid}`)).data;
-  check('sync progress is saved in Folio', Object.keys(sess.sync.assets).length === 14 && sess.sync.last && sess.sync.albumName === '2026-10-29 HIFK vs Tappara');
+  check('sync progress is saved in Folio', Object.keys(sess.sync.assets).length === 14 && sess.sync.last && sess.sync.albumName === '2026-10-29 HIFK – Tappara');
 
   // People
   await page.eval('document.querySelector("#btn-sync").click()');
   await page.eval('document.querySelector("#people-go").click()');
-  await page.wait('document.querySelector("#people input[data-person]") || /No suggestions/.test(document.querySelector("#people").textContent)', 20000);
+  await page.wait('document.querySelector("#people input[data-person]") || /Ei ehdotuksia/.test(document.querySelector("#people").textContent)', 20000);
   check('suggests a name for an Immich person', (await page.eval('document.querySelector("#people input[data-person]")?.dataset.name')) === 'Matti Virtanen');
   await page.eval('document.querySelector("#people .primary").click()');
   await sleep(500);
@@ -495,19 +500,19 @@ try {
     await page.wait('document.querySelector("#dlg-export").open');
     await page.eval(`(() => { const f = document.querySelector('#export-form'); f.elements.scope.value = 'picks'; f.elements.dest.value = 'immich'; f.elements.longEdge.value = '1600'; f.elements.stack.checked = true; f.dispatchEvent(new Event('input')); })()`);
     await page.eval('document.querySelector("#export-go").click()');
-    await page.wait('/sent to Immich, album/.test(document.querySelector("#export-progress .msg").textContent)', 90000);
+    await page.wait('/lähetetty Immichiin, albumi/.test(document.querySelector("#export-progress .msg").textContent)', 90000);
     const m = await page.eval('document.querySelector("#export-progress .msg").textContent');
     await page.eval('document.querySelector("#dlg-export").close()');
     return m;
   };
   await page.eval('document.querySelector("#btn-export").click()');
   await page.wait('document.querySelector("#dlg-export").open && document.querySelector("#export-form").elements.album.value');
-  check('the dialog offers Immich as a destination, with the game album', await page.eval(`(() => { const f = document.querySelector('#export-form'); f.elements.dest.value = 'immich'; f.dispatchEvent(new Event('input')); return !document.querySelector('#immich-dest').hidden && document.querySelector('#folder-dest').hidden && f.elements.album.value === '2026-10-29 HIFK vs Tappara'; })()`));
+  check('the dialog offers Immich as a destination, with the game album', await page.eval(`(() => { const f = document.querySelector('#export-form'); f.elements.dest.value = 'immich'; f.dispatchEvent(new Event('input')); return !document.querySelector('#immich-dest').hidden && document.querySelector('#folder-dest').hidden && f.elements.album.value === '2026-10-29 HIFK – Tappara'; })()`));
   let em = await exportToImmich();
   st = await mockState();
-  const edits = st.assets.filter((a) => a.tags.includes('RinkSide/Edit') && !a.isTrashed);
-  check('9 edited JPEGs sent to Immich', em.startsWith('9 edit(s) sent to Immich, album “2026-10-29 HIFK vs Tappara”') && edits.length === 9, em);
-  check('edits are in the game album, with captions and players', edits.every((a) => st.albums.find((x) => x.albumName === '2026-10-29 HIFK vs Tappara').assets.includes(a.id)) && edits.some((a) => a.description.startsWith('Joni Ikonen (Tappara) and Ville Varis') && a.tags.includes('Players/Ville Varis')));
+  const edits = st.assets.filter((a) => a.tags.includes('RinkSide/Muokattu') && !a.isTrashed);
+  check('9 edited JPEGs sent to Immich', em.startsWith('9 muokattua kuvaa lähetetty Immichiin, albumi “2026-10-29 HIFK – Tappara”') && edits.length === 9, em);
+  check('edits are in the game album, with captions and players', edits.every((a) => st.albums.find((x) => x.albumName === '2026-10-29 HIFK – Tappara').assets.includes(a.id)) && edits.some((a) => a.description.startsWith('Joni Ikonen (Tappara) ja Ville Varis') && a.tags.includes('Pelaajat/Ville Varis')));
   const z2orig = sess.sync.assets[byName('Z50II', 'DSC_0002').id];
   const z2edit = edits.find((a) => st.stacks.some((x) => x.primaryAssetId === a.id && x.assetIds.includes(z2orig.jpg) && x.assetIds.includes(z2orig.nef)));
   check('each edit is stacked on top of its synced JPG and NEF', Boolean(z2edit) && st.stacks.length === edits.filter((a) => st.stacks.some((x) => x.primaryAssetId === a.id)).length, st.stacks.length);
@@ -517,7 +522,7 @@ try {
   const postsBefore = st.log.filter((l) => l === 'POST /api/assets').length;
   em = await exportToImmich();
   st = await mockState();
-  check('exporting again skips unchanged photos', em.startsWith('0 edit(s) sent') && /9 unchanged, skipped/.test(em) && st.log.filter((l) => l === 'POST /api/assets').length === postsBefore, em);
+  check('exporting again skips unchanged photos', em.startsWith('0 muokattua') && /9 muuttumatonta ohitettu/.test(em) && st.log.filter((l) => l === 'POST /api/assets').length === postsBefore, em);
   await page.eval(`(() => { const f = rinkside.S.frames.find((x) => x.name === 'DSC_0007' && rinkside.S.sess.cameras[x.cam].label === 'Z50II'); rinkside.go(rinkside.S.order.indexOf(f)); })()`);
   await page.wait('rinkside.cur().name === "DSC_0007"');
   await page.eval('document.querySelector("#scope-photo").click()');
@@ -526,7 +531,7 @@ try {
   const oldEdit = (await api('GET', `/s/${sid}`)).data.sync.exports[await page.eval('rinkside.cur().id')].id;
   em = await exportToImmich();
   st = await mockState();
-  check('a changed photo replaces its earlier edit (old one in the trash)', em.startsWith('1 edit(s) sent') && st.assets.find((a) => a.id === oldEdit).isTrashed && st.assets.filter((a) => a.tags.includes('RinkSide/Edit') && !a.isTrashed).length === 9, em);
+  check('a changed photo replaces its earlier edit (old one in the trash)', em.startsWith('1 muokattua') && st.assets.find((a) => a.id === oldEdit).isTrashed && st.assets.filter((a) => a.tags.includes('RinkSide/Muokattu') && !a.isTrashed).length === 9, em);
   const anOriginal = z2orig.jpg;
   const del = await fetch(`${BASE}/_folio/api/rinkside/immich/assets`, { method: 'DELETE', headers: H, body: JSON.stringify({ ids: [anOriginal], force: true }) });
   st = await mockState();
@@ -536,7 +541,7 @@ try {
   mock.kill();
   await sleep(300);
   s = await runSync();
-  check('Immich unreachable: sync stops with a clear message', /^Stopped: .*(reach Immich)/.test(s.msg), s.msg);
+  check('Immich unreachable: sync stops with a clear message', /^Keskeytyi: .*yhteyttä Immichiin/.test(s.msg), s.msg);
 
   // -------------------------------------------------------------- an Immich album
   console.log('Open an Immich album');
@@ -561,7 +566,7 @@ try {
   s = await runSync();
   st = await mockState();
   const [a0, a1, a2] = sess2.frames.map((f) => st.assets.find((a) => a.id === f.id));
-  check('album sync updates Immich in place, no uploads', s.msg.startsWith('Done') && !st.log.includes('POST /api/assets') && a0.rating === 2 && a0.description.startsWith('Kari Piiroinen (SaiPa) during the Liiga game') && a0.tags.includes('Players/Kari Piiroinen'), [s, a0]);
+  check('album sync updates Immich in place, no uploads', s.msg.startsWith('Valmis') && !st.log.includes('POST /api/assets') && a0.rating === 2 && a0.description.startsWith('Kari Piiroinen (SaiPa) ottelussa SaiPa – Kärpät, Liiga') && a0.tags.includes('Pelaajat/Kari Piiroinen'), [s, a0]);
   check('album sync: reject archived, existing caption and stars kept', a1.visibility === 'archive' && a1.rating === -1 && a1.description === 'Old caption' && a2.rating === 4);
 
   const errors = page.logs.filter((l) => /^(error|exception)/.test(l));

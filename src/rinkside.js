@@ -18,7 +18,7 @@ const ROOT = path.join(config.dataDir, 'rinkside');
 const LOOK_KEYS = ['exposure', 'temp', 'tint', 'contrast', 'highlights', 'shadows', 'saturation'];
 const GAME_FIELDS = ['home', 'away', 'league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle', 'date', 'tagPlayers', 'liigaGame', 'liigaDate'];
 const REMEMBERED = ['league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle', 'tagPlayers'];
-export const EXPORT_DEFAULTS = { longEdge: 2048, quality: 90, pattern: '{date}_{home}-{away}_{seq}', scope: 'picks', originals: false, folder: '', dest: 'folder', album: '', stack: true };
+export const EXPORT_DEFAULTS = { longEdge: 2048, quality: 90, pattern: '{pvm}_{koti}-{vieras}_{nro}', scope: 'picks', originals: false, folder: '', dest: 'folder', album: '', stack: true };
 export const SYNC_DEFAULTS = { scope: 'picks', includeRaw: true, favorite: true, pickTag: true, rejects: 'archive', caption: true, rating: true, tags: true, album: true, albumName: '' };
 
 // ---- storage: one folder per Immich user -------------------------------------------
@@ -68,9 +68,9 @@ function listGames(user) {
 }
 
 function getSession(user, id) {
-  if (!validId(id)) throw new HttpError(404, 'Game not found');
+  if (!validId(id)) throw new HttpError(404, 'Peliä ei löytynyt');
   const s = load(sessionFile(user, id), null);
-  if (!s) throw new HttpError(404, 'Game not found');
+  if (!s) throw new HttpError(404, 'Peliä ei löytynyt');
   return s;
 }
 
@@ -234,7 +234,7 @@ const lib = target.protocol === 'https:' ? https : http;
 const prefix = target.pathname.replace(/\/+$/, '');
 
 function passThrough(req, res, apiPath, search, auth) {
-  if (!ALLOWED.some(([m, re]) => m === req.method && re.test(apiPath))) throw new HttpError(404, 'Not available');
+  if (!ALLOWED.some(([m, re]) => m === req.method && re.test(apiPath))) throw new HttpError(404, 'Ei käytettävissä');
   const headers = { ...auth.headers };
   for (const h of ['content-type', 'content-length', 'accept', 'range', 'x-immich-checksum']) if (req.headers[h]) headers[h] = req.headers[h];
   const upstream = lib.request(
@@ -252,7 +252,7 @@ function passThrough(req, res, apiPath, search, auth) {
     },
   );
   upstream.on('error', (err) => {
-    if (!res.headersSent) sendJson(res, 502, { error: `Folio could not reach Immich (${err.code || err.message})` });
+    if (!res.headersSent) sendJson(res, 502, { error: `Folio ei saa yhteyttä Immichiin (${err.code || err.message})` });
     else res.destroy();
   });
   res.on('close', () => !res.writableFinished && upstream.destroy());
@@ -321,7 +321,7 @@ export async function rinksideApi(req, res, url, p, auth) {
 
   if ((m = p.match(/^\/rosters\/(.+)$/))) {
     const team = decodeURIComponent(m[1]).trim().slice(0, 100);
-    if (!team) throw new HttpError(400, 'Team name missing');
+    if (!team) throw new HttpError(400, 'Joukkueen nimi puuttuu');
     const all = load(rostersFile, {});
     if (method === 'GET') return sendJson(res, 200, { team, players: all[team] || [] });
     if (method === 'PUT') {

@@ -67,7 +67,7 @@ export class Card {
   async file(rel) {
     if (this.files) {
       const f = this.files.get(rel);
-      if (!f) throw new Error(`${rel} is not in the chosen folder`);
+      if (!f) throw new Error(`${rel} ei ole valitussa kansiossa`);
       return f;
     }
     if (this.cache.has(rel)) return this.cache.get(rel);

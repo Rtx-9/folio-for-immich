@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="fi">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,50 +8,50 @@
   <link rel="stylesheet" href="/_folio/static/rinkside/app.css?v=__VERSION__">
 </head>
 <body>
-  <!-- Home: games and "new game" -->
+  <!-- Etusivu: pelit ja "uusi peli" -->
   <section id="home" hidden>
     <header class="home-head">
       <div class="brand"><img src="/_folio/static/rinkside/icon.svg?v=__VERSION__" alt="" width="34" height="34"><span>RinkSide</span></div>
-      <a class="ghost btn-link" href="/" title="Back to Immich">← Immich</a>
+      <a class="ghost btn-link" href="/" title="Takaisin Immichiin">← Immich</a>
     </header>
     <div class="home-body">
       <section class="card new-game">
-        <h2>New game</h2>
-        <p class="muted">Open the memory card from each camera. Photos are read straight from the card in this browser and never changed.</p>
+        <h2>Uusi peli</h2>
+        <p class="muted">Avaa jokaisen kameran muistikortti. Kuvat luetaan suoraan kortilta tässä selaimessa, eikä niitä koskaan muuteta.</p>
         <div id="chosen-cards" class="chips"></div>
         <div class="row">
-          <button class="primary" id="open-card">Open a card…</button>
-          <button id="add-card" hidden>Add another card (second camera)…</button>
-          <button class="primary" id="start-game" hidden>Start culling</button>
-          <button id="open-album">Open an Immich album…</button>
+          <button class="primary" id="open-card">Avaa muistikortti…</button>
+          <button id="add-card" hidden>Lisää toinen kortti (toinen kamera)…</button>
+          <button class="primary" id="start-game" hidden>Aloita karsinta</button>
+          <button id="open-album">Avaa Immich-albumi…</button>
         </div>
-        <p id="no-folder-access" class="muted small" hidden>This browser can't keep access to a card, so you'll pick it again when you reopen a game. Edge or Chrome remember it.</p>
+        <p id="no-folder-access" class="muted small" hidden>Tämä selain ei muista korttia, joten valitset sen uudelleen, kun avaat pelin myöhemmin. Edge ja Chrome muistavat sen.</p>
         <div id="home-scan" class="progress" hidden><div class="bar"><i></i></div><div class="msg"></div></div>
       </section>
-      <p id="signed-out" class="card" hidden>Sign in to <a href="/">Immich</a> first, then come back here.</p>
+      <p id="signed-out" class="card" hidden>Kirjaudu ensin <a href="/">Immichiin</a> ja palaa sitten tänne.</p>
       <section class="card">
-        <h2>Games</h2>
+        <h2>Pelit</h2>
         <div id="games" class="games"></div>
       </section>
     </div>
   </section>
 
-  <!-- A game: loupe/grid, filmstrip, side panel -->
+  <!-- Peli: kuva/ruudukko, filminauha, sivupaneeli -->
   <section id="game" hidden>
     <header class="top">
-      <button class="ghost icon-btn" id="go-home" title="All games"><img src="/_folio/static/rinkside/icon.svg?v=__VERSION__" alt="RinkSide" width="26" height="26"></button>
-      <button class="ghost game-title" id="game-title" title="Game setup (teams, rosters, caption)"></button>
+      <button class="ghost icon-btn" id="go-home" title="Kaikki pelit"><img src="/_folio/static/rinkside/icon.svg?v=__VERSION__" alt="RinkSide" width="26" height="26"></button>
+      <button class="ghost game-title" id="game-title" title="Pelin tiedot (joukkueet, kokoonpanot, kuvateksti)"></button>
       <nav class="filters" id="filters"></nav>
       <div class="spacer"></div>
-      <label class="toggle" title="Move to the next photo after picking, rejecting or rating (A)"><input type="checkbox" id="auto-advance" checked> Auto-advance</label>
+      <label class="toggle" title="Siirry seuraavaan kuvaan valinnan, hylkäyksen tai tähtien jälkeen (A)"><input type="checkbox" id="auto-advance" checked> Siirry seuraavaan</label>
       <div class="seg" role="group">
-        <button id="view-loupe" title="Loupe (E)">Loupe</button>
-        <button id="view-grid" title="Grid (G)">Grid</button>
+        <button id="view-loupe" title="Iso kuva (E)">Kuva</button>
+        <button id="view-grid" title="Ruudukko (G)">Ruudukko</button>
       </div>
-      <button id="btn-setup" title="Game setup">Game</button>
-      <button id="btn-export" title="Export (Ctrl+E)">Export</button>
-      <button id="btn-sync" class="primary" title="Sync to Immich">Sync</button>
-      <button class="ghost icon-btn" id="btn-help" title="Keyboard shortcuts (?)">?</button>
+      <button id="btn-setup" title="Pelin tiedot">Peli</button>
+      <button id="btn-export" title="Vie (Ctrl+E)">Vie</button>
+      <button id="btn-sync" class="primary" title="Synkronoi Immichiin">Synkronoi</button>
+      <button class="ghost icon-btn" id="btn-help" title="Pikanäppäimet (?)">?</button>
     </header>
     <div class="workspace">
       <main id="stage">
@@ -60,147 +60,148 @@
         <div id="crop-layer" hidden><div id="crop-box"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><span class="thirds"></span></div></div>
         <div id="loupe-info" class="overlay-info"></div>
         <div id="loupe-badges" class="overlay-badges"></div>
-        <div id="zoom-label" class="zoom-label" hidden>100%</div>
-        <div id="before-label" class="zoom-label before" hidden>Before</div>
+        <div id="zoom-label" class="zoom-label" hidden>100 %</div>
+        <div id="before-label" class="zoom-label before" hidden>Ennen</div>
         <div id="grid" hidden><div id="grid-inner"></div></div>
-        <div id="scan" class="scan" hidden><div class="scan-box"><b id="scan-text">Reading card…</b><div class="bar"><i id="scan-bar"></i></div></div></div>
+        <div id="scan" class="scan" hidden><div class="scan-box"><b id="scan-text">Luetaan korttia…</b><div class="bar"><i id="scan-bar"></i></div></div></div>
         <div id="empty" class="empty" hidden></div>
-        <div id="reconnect" class="scan" hidden><div class="scan-box"><b id="reconnect-text">Connect the card to see the photos.</b><div class="row center"><button class="primary" id="reconnect-btn">Connect the card</button></div><p class="muted small">Picks, captions and edits are saved either way.</p></div></div>
+        <div id="reconnect" class="scan" hidden><div class="scan-box"><b id="reconnect-text">Yhdistä kortti nähdäksesi kuvat.</b><div class="row center"><button class="primary" id="reconnect-btn">Yhdistä kortti</button></div><p class="muted small">Valinnat, kuvatekstit ja säädöt ovat tallessa joka tapauksessa.</p></div></div>
       </main>
       <aside id="panel">
         <div class="tabs" id="panel-tabs">
-          <button data-tab="players" class="on">Players</button>
-          <button data-tab="caption">Caption</button>
-          <button data-tab="look">Look</button>
-          <button data-tab="crop">Crop</button>
+          <button data-tab="players" class="on">Pelaajat</button>
+          <button data-tab="caption">Kuvateksti</button>
+          <button data-tab="look">Säädöt</button>
+          <button data-tab="crop">Rajaus</button>
         </div>
         <div class="tab" data-tab="players">
           <div class="caption-preview small" id="players-caption"></div>
-          <p class="muted small">Click the players in the photo. Click again to remove.</p>
+          <p class="muted small">Klikkaa kuvassa olevia pelaajia. Uusi klikkaus poistaa.</p>
           <div id="player-grid"></div>
-          <div class="row small"><button id="players-clear">Clear players</button><button id="players-same" title="Same players as the previous photo (=)">= Same as previous</button></div>
+          <div class="row small"><button id="players-clear">Tyhjennä pelaajat</button><button id="players-same" title="Samat pelaajat kuin edellisessä kuvassa (=)">= Sama kuin edellinen</button></div>
         </div>
         <div class="tab" data-tab="caption" hidden>
-          <label class="field" id="players-field">Players <small>Enter</small>
-            <input id="players" autocomplete="off" spellcheck="false" placeholder="23 a12  (home 23, away 12)">
+          <label class="field" id="players-field">Pelaajat <small>Enter</small>
+            <input id="players" autocomplete="off" spellcheck="false" placeholder="23 a12  (koti 23, vieras 12)">
           </label>
           <div id="player-chips" class="chips"></div>
           <div class="caption-preview" id="caption-preview"></div>
-          <label class="field">Custom caption <small>T · leave empty to use the game template</small>
-            <textarea id="custom-caption" rows="4" placeholder="e.g. \23\ celebrates a goal with \a12\ watching"></textarea>
+          <label class="field">Oma kuvateksti <small>T · jätä tyhjäksi, niin käytetään pelin mallia</small>
+            <textarea id="custom-caption" rows="4" placeholder="esim. \23\ tuulettaa maalia, \a12\ katsoo vierestä"></textarea>
           </label>
           <div class="row small">
-            <button id="same-players" title="Same players as the previous photo (=)">= Same as previous</button>
-            <button id="clear-caption">Clear</button>
+            <button id="same-players" title="Samat pelaajat kuin edellisessä kuvassa (=)">= Sama kuin edellinen</button>
+            <button id="clear-caption">Tyhjennä</button>
           </div>
           <dl id="frame-info" class="info"></dl>
         </div>
         <div class="tab" data-tab="look" hidden>
           <div class="seg scope" role="group">
-            <button id="scope-game" class="on" title="Changes apply to every photo of this game">Whole game</button>
-            <button id="scope-photo" title="This photo gets its own look">This photo</button>
+            <button id="scope-game" class="on" title="Muutokset koskevat pelin kaikkia kuvia">Koko peli</button>
+            <button id="scope-photo" title="Tälle kuvalle omat säädöt">Tämä kuva</button>
           </div>
           <div id="look-note" class="note"></div>
           <div class="row small presets">
-            <select id="preset-select" title="Presets"></select>
-            <button id="preset-save" title="Save the current sliders as a preset">Save…</button>
-            <button id="preset-delete" title="Delete this preset">Delete</button>
+            <select id="preset-select" title="Esiasetukset"></select>
+            <button id="preset-save" title="Tallenna nykyiset säädöt esiasetukseksi">Tallenna…</button>
+            <button id="preset-delete" title="Poista tämä esiasetus">Poista</button>
           </div>
-          <label class="check small"><input type="checkbox" id="preset-wb"> Saving includes white balance</label>
+          <label class="check small"><input type="checkbox" id="preset-wb"> Tallenna myös valkotasapaino</label>
           <div id="sliders"></div>
           <div class="row small">
-            <button id="wb-pick" title="Click the ice to set white balance (W)">⌖ Pick ice</button>
-            <button id="wb-auto" title="White balance from the ice automatically (Shift+W)">Auto from ice</button>
+            <button id="wb-pick" title="Klikkaa jäätä asettaaksesi valkotasapainon (W)">⌖ Valitse jää</button>
+            <button id="wb-auto" title="Valkotasapaino jäästä automaattisesti (Shift+W)">Jäästä automaattisesti</button>
           </div>
           <div class="row small">
-            <button id="look-copy" title="Ctrl+C">Copy</button>
-            <button id="look-paste" title="Ctrl+V">Paste</button>
-            <button id="look-paste-picks" title="Ctrl+Shift+V">Paste to all picks</button>
-            <button id="look-reset">Reset</button>
+            <button id="look-copy" title="Ctrl+C">Kopioi</button>
+            <button id="look-paste" title="Ctrl+V">Liitä</button>
+            <button id="look-paste-picks" title="Ctrl+Shift+V">Liitä kaikkiin valittuihin</button>
+            <button id="look-reset">Nollaa</button>
           </div>
-          <p class="muted small">Hold <kbd>\</kbd> to see the photo without the look.</p>
+          <p class="muted small">Pidä <kbd>\</kbd> pohjassa nähdäksesi kuvan ilman säätöjä.</p>
         </div>
         <div class="tab" data-tab="crop" hidden>
-          <div class="slider straighten"><label for="straighten" title="Double-click to reset">Straighten</label><input type="range" id="straighten" min="-15" max="15" step="0.1" value="0"><output id="straighten-out">0°</output></div>
+          <div class="slider straighten"><label for="straighten" title="Nollaa kaksoisklikkauksella">Suorista</label><input type="range" id="straighten" min="-15" max="15" step="0.1" value="0"><output id="straighten-out">0°</output></div>
           <div class="row small">
-            <button id="horizon-auto" title="Level the photo from the boards and lines (H)">Auto horizon (H)</button>
-            <button id="horizon-picks" title="Level every pick">Auto horizon for all picks</button>
+            <button id="horizon-auto" title="Suorista kuva laitojen ja viivojen mukaan (H)">Automaattinen horisontti (H)</button>
+            <button id="horizon-picks" title="Suorista kaikki valitut kuvat">Suorista kaikki valitut</button>
           </div>
           <div class="ratios" id="ratios"></div>
           <div class="row small">
-            <button id="crop-edit" class="primary" title="C">Crop (C)</button>
-            <button id="crop-rotate" title="Turn the crop box (R)">Rotate box (R)</button>
-            <button id="crop-clear">Remove crop</button>
+            <button id="crop-edit" class="primary" title="C">Rajaa (C)</button>
+            <button id="crop-rotate" title="Käännä rajauslaatikko (R)">Käännä laatikko (R)</button>
+            <button id="crop-clear">Poista rajaus</button>
           </div>
-          <p class="muted small">Drag inside the box to move it and its corners to resize. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</p>
+          <p class="muted small">Siirrä laatikkoa vetämällä sen sisältä ja muuta kokoa kulmista. <kbd>Enter</kbd> hyväksyy, <kbd>Esc</kbd> peruu.</p>
         </div>
       </aside>
     </div>
     <footer id="strip"><div id="strip-inner"></div></footer>
   </section>
 
-  <!-- Dialogs -->
+  <!-- Ikkunat -->
 
   <dialog id="dlg-albums" class="dlg">
     <form method="dialog">
-      <h2>Open an Immich album</h2>
-      <p class="muted">Cull and caption photos that are already in Immich. Changes go back with “Sync”.</p>
-      <input id="album-filter" placeholder="Filter albums" autocomplete="off">
+      <h2>Avaa Immich-albumi</h2>
+      <p class="muted">Karsi ja kuvatekstitä kuvia, jotka ovat jo Immichissä. Muutokset menevät takaisin Synkronoi-napista.</p>
+      <input id="album-filter" placeholder="Hae albumia" autocomplete="off">
       <div id="album-list" class="album-list"></div>
-      <div class="actions"><button value="cancel">Close</button></div>
+      <div class="actions"><button value="cancel">Sulje</button></div>
     </form>
   </dialog>
 
   <dialog id="dlg-setup" class="dlg wide">
     <form method="dialog" id="setup-form">
-      <h2>Game setup</h2>
+      <h2>Pelin tiedot</h2>
       <div class="liiga">
-        <h3>Liiga game <small class="muted">fills in the teams, arena and both lineups with player photos</small></h3>
+        <h3>Liiga-ottelu <small class="muted">täyttää joukkueet, hallin ja molempien joukkueiden kokoonpanot pelaajakuvineen</small></h3>
         <div class="row">
           <input type="date" name="liigaDate" class="date">
-          <select id="liiga-games"><option value="">Choose the game…</option></select>
+          <select id="liiga-games"><option value="">Valitse ottelu…</option></select>
         </div>
         <div id="liiga-status" class="muted small"></div>
       </div>
-      <label class="check"><input type="checkbox" name="tagPlayers"> Tag players in photos (names in captions, keywords and Immich tags)</label>
+      <label class="check"><input type="checkbox" name="tagPlayers"> Merkitse pelaajat kuviin (nimet kuvateksteihin, avainsanoihin ja Immichin tunnisteisiin)</label>
       <div class="grid2">
-        <label class="field">Home team <input name="home" list="teams" autocomplete="off" required></label>
-        <label class="field">Away team <input name="away" list="teams" autocomplete="off"></label>
-        <label class="field">League <input name="league" placeholder="Liiga"></label>
-        <label class="field">Arena <input name="venue" placeholder="Helsinki Ice Hall"></label>
-        <label class="field">City <input name="city"></label>
-        <label class="field">Country <input name="country"></label>
-        <label class="field">Byline (photographer) <input name="byline"></label>
-        <label class="field">Credit <input name="credit"></label>
-        <label class="field span2">Copyright <input name="copyright" placeholder="© 2026 Your Name"></label>
-        <label class="field span2">Keywords <small>comma separated, added to every photo</small><input name="keywords" placeholder="ice hockey, jääkiekko"></label>
+        <label class="field">Kotijoukkue <input name="home" list="teams" autocomplete="off" required></label>
+        <label class="field">Vierasjoukkue <input name="away" list="teams" autocomplete="off"></label>
+        <label class="field">Sarja <input name="league" placeholder="Liiga"></label>
+        <label class="field">Halli <input name="venue" placeholder="Helsingin jäähalli"></label>
+        <label class="field">Kaupunki <input name="city"></label>
+        <label class="field">Maa <input name="country"></label>
+        <label class="field">Kuvaaja <input name="byline"></label>
+        <label class="field">Krediitti <input name="credit"></label>
+        <label class="field span2">Tekijänoikeus <input name="copyright" placeholder="© 2026 Oma Nimi"></label>
+        <label class="field span2">Avainsanat <small>pilkuilla erotettuna, lisätään jokaiseen kuvaan</small><input name="keywords" placeholder="jääkiekko, Liiga"></label>
       </div>
-      <h3 id="rosters-head">Rosters <small class="muted">one player per line, “23 Matti Virtanen”. Remembered per team.</small></h3>
+      <h3 id="rosters-head">Kokoonpanot <small class="muted">yksi pelaaja riville, “23 Matti Virtanen”. Muistetaan joukkueittain.</small></h3>
       <div class="grid2" id="rosters">
-        <div class="field"><span id="roster-home-label">Home roster</span><textarea name="rosterHome" rows="8" spellcheck="false"></textarea><button type="button" class="small" data-liiga-roster="home">Load from Liiga</button></div>
-        <div class="field"><span id="roster-away-label">Away roster</span><textarea name="rosterAway" rows="8" spellcheck="false"></textarea><button type="button" class="small" data-liiga-roster="away">Load from Liiga</button></div>
+        <div class="field"><span id="roster-home-label">Kotijoukkueen kokoonpano</span><textarea name="rosterHome" rows="8" spellcheck="false"></textarea><button type="button" class="small" data-liiga-roster="home">Hae Liigasta</button></div>
+        <div class="field"><span id="roster-away-label">Vierasjoukkueen kokoonpano</span><textarea name="rosterAway" rows="8" spellcheck="false"></textarea><button type="button" class="small" data-liiga-roster="away">Hae Liigasta</button></div>
       </div>
-      <h3>Caption</h3>
-      <label class="field">Template <textarea name="template" rows="2" spellcheck="false"></textarea></label>
+      <h3>Kuvateksti</h3>
+      <label class="field">Malli <textarea name="template" rows="2" spellcheck="false"></textarea></label>
       <div id="tokens" class="chips"></div>
       <div class="grid2">
-        <label class="field">Date style
+        <label class="field">Päivämäärä
           <select name="dateStyle">
-            <option value="en-US">October 29, 2026</option>
-            <option value="en-GB">29 October 2026</option>
-            <option value="fi">29.10.2026 (Finnish, “ja”)</option>
+            <option value="fi">29.10.2026</option>
+            <option value="fi-long">29. lokakuuta 2026</option>
             <option value="iso">2026-10-29</option>
+            <option value="en-GB">29 October 2026 (englanniksi, “and”)</option>
+            <option value="en-US">October 29, 2026 (englanniksi, “and”)</option>
           </select>
         </label>
-        <div class="field">Example <div id="template-preview" class="caption-preview"></div></div>
+        <div class="field">Esimerkki <div id="template-preview" class="caption-preview"></div></div>
       </div>
-      <h3>Cameras <small class="muted">fix a camera clock so bodies line up in one timeline</small></h3>
+      <h3>Kamerat <small class="muted">korjaa kameran kello, niin rungot asettuvat samalle aikajanalle</small></h3>
       <div id="cameras" class="cameras"></div>
-      <h3>Cards and folders</h3>
+      <h3>Muistikortit</h3>
       <div id="sources" class="sources"></div>
       <div class="actions">
-        <button value="cancel">Cancel</button>
-        <button value="save" class="primary">Save</button>
+        <button value="cancel">Peruuta</button>
+        <button value="save" class="primary">Tallenna</button>
       </div>
     </form>
     <datalist id="teams"></datalist>
@@ -208,119 +209,119 @@
 
   <dialog id="dlg-export" class="dlg">
     <form method="dialog" id="export-form">
-      <h2>Export</h2>
-      <label class="field">Photos
+      <h2>Vie kuvat</h2>
+      <label class="field">Kuvat
         <select name="scope">
-          <option value="picks">Picks</option>
-          <option value="rated">Picks and rated photos</option>
-          <option value="kept">Everything except rejects</option>
-          <option value="selected">Selected in the grid</option>
+          <option value="picks">Valitut</option>
+          <option value="rated">Valitut ja tähdelliset</option>
+          <option value="kept">Kaikki paitsi hylätyt</option>
+          <option value="selected">Ruudukossa valitut</option>
         </select>
       </label>
-      <label class="field">Send to
+      <label class="field">Kohde
         <select name="dest">
-          <option value="folder">A folder on this computer</option>
-          <option value="immich">Immich (the edited JPEGs)</option>
+          <option value="folder">Kansio tällä tietokoneella</option>
+          <option value="immich">Immich (muokatut JPEGit)</option>
         </select>
       </label>
       <div class="grid2">
-        <label class="field">Long edge (px) <small>0 = full size</small><input name="longEdge" type="number" min="0" max="20000" step="1"></label>
-        <label class="field">JPEG quality <span id="q-val"></span><input name="quality" type="range" min="40" max="100"></label>
+        <label class="field">Pitkä sivu (px) <small>0 = täysi koko</small><input name="longEdge" type="number" min="0" max="20000" step="1"></label>
+        <label class="field">JPEG-laatu <span id="q-val"></span><input name="quality" type="range" min="40" max="100"></label>
       </div>
-      <label class="field">File names <input name="pattern" spellcheck="false"></label>
-      <div class="muted small">Tokens: {date} {time} {home} {away} {league} {seq} {name} {camera} · e.g. <b id="name-preview"></b></div>
+      <label class="field">Tiedostonimet <input name="pattern" spellcheck="false"></label>
+      <div class="muted small">Koodit: {pvm} {aika} {koti} {vieras} {sarja} {nro} {nimi} {kamera} · esim. <b id="name-preview"></b></div>
       <div id="immich-dest" hidden>
-        <label class="field">Album <input name="album" spellcheck="false"></label>
-        <label class="check"><input type="checkbox" name="stack"> Stack each edit on top of its original (when the original is synced)</label>
-        <p class="muted small">Captions, stars, players and teams go along as in Sync, plus a “RinkSide/Edit” tag. Exporting again skips unchanged photos; a photo you changed replaces its earlier edit, which goes to Immich's trash.</p>
+        <label class="field">Albumi <input name="album" spellcheck="false"></label>
+        <label class="check"><input type="checkbox" name="stack"> Pinoa jokainen muokattu kuva alkuperäisen päälle (kun alkuperäinen on synkronoitu)</label>
+        <p class="muted small">Kuvatekstit, tähdet, pelaajat ja joukkueet tulevat mukaan kuten synkronoinnissa, lisäksi tunniste “RinkSide/Muokattu”. Uusi vienti ohittaa muuttumattomat kuvat; muutettu kuva korvaa aiemman version, joka siirtyy Immichin roskakoriin.</p>
       </div>
       <div id="folder-dest">
-      <div class="field" id="export-folder-field">Folder
-        <div class="row tight"><button type="button" id="export-pick">Choose folder…</button><span id="export-folder" class="muted small"></span></div>
+      <div class="field" id="export-folder-field">Kansio
+        <div class="row tight"><button type="button" id="export-pick">Valitse kansio…</button><span id="export-folder" class="muted small"></span></div>
       </div>
-      <label class="field">Subfolder for this game <input name="folder" spellcheck="false"></label>
-      <label class="check"><input type="checkbox" name="originals"> Also copy the originals (NEF + JPG) with .xmp sidecars for Lightroom</label>
-      <p id="zip-note" class="muted small" hidden>This browser can't write to a folder, so the photos download as a ZIP.</p>
+      <label class="field">Alikansio tälle pelille <input name="folder" spellcheck="false"></label>
+      <label class="check"><input type="checkbox" name="originals"> Kopioi myös alkuperäiset (NEF + JPG) ja .xmp-sivutiedostot Lightroomia varten</label>
+      <p id="zip-note" class="muted small" hidden>Tämä selain ei voi kirjoittaa kansioon, joten kuvat ladataan ZIP-tiedostona.</p>
       </div>
       <div id="export-progress" class="progress" hidden><div class="bar"><i></i></div><div class="msg"></div></div>
       <div class="actions">
-        <button value="cancel" id="export-close">Close</button>
-        <button type="button" class="primary" id="export-go">Export</button>
+        <button value="cancel" id="export-close">Sulje</button>
+        <button type="button" class="primary" id="export-go">Vie</button>
       </div>
     </form>
   </dialog>
 
   <dialog id="dlg-sync" class="dlg">
     <form method="dialog" id="sync-form">
-      <h2>Sync to Immich</h2>
+      <h2>Synkronoi Immichiin</h2>
       <p class="muted" id="sync-target"></p>
       <div id="sync-local">
-        <label class="field">Upload
+        <label class="field">Lähetä
           <select name="scope">
-            <option value="picks">Picks</option>
-            <option value="kept">Everything except rejects</option>
-            <option value="all">The full card (rejects get archived or tagged)</option>
+            <option value="picks">Valitut</option>
+            <option value="kept">Kaikki paitsi hylätyt</option>
+            <option value="all">Koko kortti (hylätyt arkistoidaan tai merkitään)</option>
           </select>
         </label>
-        <label class="check"><input type="checkbox" name="includeRaw"> Upload NEFs too (stacked under the JPG)</label>
-        <label class="check"><input type="checkbox" name="album"> Put them in a game album: <input name="albumName" class="inline" spellcheck="false"></label>
+        <label class="check"><input type="checkbox" name="includeRaw"> Lähetä myös NEFit (pinottuna JPEGin alle)</label>
+        <label class="check"><input type="checkbox" name="album"> Laita ne pelin albumiin: <input name="albumName" class="inline" spellcheck="false"></label>
       </div>
-      <label class="check"><input type="checkbox" name="favorite"> Picks become favorites</label>
-      <label class="check"><input type="checkbox" name="pickTag"> Tag picks “RinkSide/Pick”</label>
-      <label class="field">Rejects
+      <label class="check"><input type="checkbox" name="favorite"> Valituista tulee suosikkeja</label>
+      <label class="check"><input type="checkbox" name="pickTag"> Merkitse valitut tunnisteella “RinkSide/Valittu”</label>
+      <label class="field">Hylätyt
         <select name="rejects">
-          <option value="archive">Archive them (never deleted)</option>
-          <option value="tag">Tag them “RinkSide/Reject”</option>
-          <option value="none">Leave them alone</option>
+          <option value="archive">Arkistoi (ei koskaan poisteta)</option>
+          <option value="tag">Merkitse tunnisteella “RinkSide/Hylätty”</option>
+          <option value="none">Älä koske niihin</option>
         </select>
       </label>
-      <label class="check"><input type="checkbox" name="caption"> Captions become descriptions</label>
-      <label class="check"><input type="checkbox" name="rating"> Stars become ratings</label>
-      <label class="check"><input type="checkbox" name="tags"> Players and teams become tags (Players/…, Teams/…)</label>
+      <label class="check"><input type="checkbox" name="caption"> Kuvatekstit kuvauksiksi</label>
+      <label class="check"><input type="checkbox" name="rating"> Tähdet arvosteluiksi</label>
+      <label class="check"><input type="checkbox" name="tags"> Pelaajat ja joukkueet tunnisteiksi (Pelaajat/…, Joukkueet/…)</label>
       <div id="sync-progress" class="progress" hidden><div class="bar"><i></i></div><div class="msg"></div><ul class="errors"></ul></div>
       <div id="people" class="people" hidden></div>
       <div class="actions">
-        <button value="cancel">Close</button>
-        <button type="button" id="people-go" hidden>Suggest names for Immich people…</button>
-        <button type="button" class="primary" id="sync-go">Sync now</button>
+        <button value="cancel">Sulje</button>
+        <button type="button" id="people-go" hidden>Ehdota nimiä Immichin henkilöille…</button>
+        <button type="button" class="primary" id="sync-go">Synkronoi nyt</button>
       </div>
     </form>
   </dialog>
 
   <dialog id="dlg-help" class="dlg wide">
     <form method="dialog">
-      <h2>Keyboard shortcuts</h2>
+      <h2>Pikanäppäimet</h2>
       <div class="keys">
-        <div><h3>Moving</h3>
-          <p><kbd>←</kbd> <kbd>→</kbd> previous / next (hold to skim)</p>
-          <p><kbd>↑</kbd> <kbd>↓</kbd> row up / down in the grid</p>
-          <p><kbd>Home</kbd> <kbd>End</kbd> first / last</p>
-          <p><kbd>G</kbd> grid · <kbd>E</kbd> loupe · <kbd>Enter</kbd> open in loupe</p>
-          <p><kbd>Z</kbd> or click: 100% · drag to pan</p>
+        <div><h3>Liikkuminen</h3>
+          <p><kbd>←</kbd> <kbd>→</kbd> edellinen / seuraava (pidä pohjassa selataksesi)</p>
+          <p><kbd>↑</kbd> <kbd>↓</kbd> rivi ylös / alas ruudukossa</p>
+          <p><kbd>Home</kbd> <kbd>End</kbd> ensimmäinen / viimeinen</p>
+          <p><kbd>G</kbd> ruudukko · <kbd>E</kbd> iso kuva · <kbd>Enter</kbd> avaa isona</p>
+          <p><kbd>Z</kbd> tai klikkaus: 100 % · raahaa liikuttaaksesi</p>
         </div>
-        <div><h3>Culling</h3>
-          <p><kbd>Space</kbd> or <kbd>P</kbd> pick</p>
-          <p><kbd>X</kbd> reject · <kbd>U</kbd> unflag</p>
-          <p><kbd>1</kbd>–<kbd>5</kbd> stars · <kbd>0</kbd> no stars</p>
-          <p><kbd>A</kbd> auto-advance on/off</p>
-          <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</p>
+        <div><h3>Karsinta</h3>
+          <p><kbd>Välilyönti</kbd> tai <kbd>P</kbd> valitse</p>
+          <p><kbd>X</kbd> hylkää · <kbd>U</kbd> poista merkintä</p>
+          <p><kbd>1</kbd>–<kbd>5</kbd> tähdet · <kbd>0</kbd> ei tähtiä</p>
+          <p><kbd>A</kbd> siirry seuraavaan päälle / pois</p>
+          <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> kumoa</p>
         </div>
-        <div><h3>Caption</h3>
-          <p><kbd>Enter</kbd> type players: “23 a12”</p>
-          <p><kbd>Shift</kbd>+<kbd>Enter</kbd> save and go to next</p>
-          <p><kbd>=</kbd> same players as the previous photo</p>
-          <p><kbd>T</kbd> custom caption (\23\ \a12\ codes)</p>
+        <div><h3>Kuvateksti</h3>
+          <p><kbd>Enter</kbd> kirjoita pelaajat: “23 a12”</p>
+          <p><kbd>Shift</kbd>+<kbd>Enter</kbd> tallenna ja siirry seuraavaan</p>
+          <p><kbd>=</kbd> samat pelaajat kuin edellisessä kuvassa</p>
+          <p><kbd>T</kbd> oma kuvateksti (koodit \23\ \a12\)</p>
         </div>
-        <div><h3>Look and crop</h3>
-          <p><kbd>W</kbd> pick white balance on the ice · <kbd>Shift</kbd>+<kbd>W</kbd> auto</p>
-          <p><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> copy / paste look · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> to all picks</p>
-          <p><kbd>\</kbd> before / after</p>
-          <p><kbd>C</kbd> crop · <kbd>R</kbd> rotate box · <kbd>Enter</kbd> apply · <kbd>Esc</kbd> cancel</p>
-          <p><kbd>H</kbd> auto horizon</p>
-          <p><kbd>Ctrl</kbd>+<kbd>E</kbd> export · <kbd>?</kbd> this help</p>
+        <div><h3>Säädöt ja rajaus</h3>
+          <p><kbd>W</kbd> valitse valkotasapaino jäästä · <kbd>Shift</kbd>+<kbd>W</kbd> automaattisesti</p>
+          <p><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> kopioi / liitä säädöt · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> kaikkiin valittuihin</p>
+          <p><kbd>\</kbd> ennen / jälkeen</p>
+          <p><kbd>C</kbd> rajaa · <kbd>R</kbd> käännä laatikko · <kbd>Enter</kbd> hyväksy · <kbd>Esc</kbd> peru</p>
+          <p><kbd>H</kbd> automaattinen horisontti</p>
+          <p><kbd>Ctrl</kbd>+<kbd>E</kbd> vie · <kbd>?</kbd> tämä ohje</p>
         </div>
       </div>
-      <div class="actions"><button value="cancel" class="primary">Got it</button></div>
+      <div class="actions"><button value="cancel" class="primary">Selvä</button></div>
     </form>
   </dialog>
 

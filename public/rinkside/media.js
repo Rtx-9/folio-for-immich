@@ -29,7 +29,7 @@ export class Source {
   }
 
   async bytes(offset, length) {
-    if (offset < 0 || length < 0 || offset + length > this.size) throw new Error('Read past end of file');
+    if (offset < 0 || length < 0 || offset + length > this.size) throw new Error('Tiedosto loppui kesken');
     if (length > 262144) return new Uint8Array(await this.blob.slice(offset, offset + length).arrayBuffer());
     const B = 65536;
     const first = Math.floor(offset / B);
@@ -319,7 +319,7 @@ export function segment(marker, payload) {
 export function withSegments(jpeg, insert) {
   const segs = segments(jpeg);
   const sos = segs.find((s) => s.marker === 0xda);
-  if (!sos) throw new Error('Not a JPEG image');
+  if (!sos) throw new Error('Ei JPEG-kuva');
   const kept = segs.filter((s) => ![0xda, 0xe0, 0xe1, 0xed].includes(s.marker)).map((s) => jpeg.subarray(s.start, s.end));
   return concat(jpeg.subarray(0, 2), ...insert, ...kept, jpeg.subarray(sos.start));
 }
@@ -424,7 +424,7 @@ export async function inspect(file) {
   if (info.kind === 'jpg') {
     const segs = segments(await src.bytes(0, Math.min(src.size, 196608)));
     const dims = frameSize(segs);
-    if (!dims) throw new Error('Not a readable JPEG');
+    if (!dims) throw new Error('JPEG-tiedostoa ei voi lukea');
     info.w = dims.width;
     info.h = dims.height;
     const app1 = exifSeg(segs);
@@ -483,7 +483,7 @@ export async function inspect(file) {
     }
   }
   jpegs.sort((a, b) => a.w - b.w);
-  if (!jpegs.length) throw new Error('This raw file has no embedded preview');
+  if (!jpegs.length) throw new Error('Raw-tiedostossa ei ole esikatselukuvaa');
   info.preview = jpegs.at(-1);
   if (!info.w || info.preview.w > info.w * 0.9) {
     info.w = info.preview.w;
@@ -617,7 +617,7 @@ export function frameMeta(session, frame, rosters = {}) {
     venue: game.venue || '',
     keywords: keywordsFor(frame, game, rosters),
     people: players.map((p) => p.name),
-    tags: [...players.map((p) => `Players/${p.name}`), ...[game.home, game.away].filter(Boolean).map((t) => `Teams/${t}`)],
+    tags: [...players.map((p) => `Pelaajat/${p.name}`), ...[game.home, game.away].filter(Boolean).map((t) => `Joukkueet/${t}`)],
     rating: frame.flag === -1 ? -1 : frame.stars || 0,
     pick: frame.flag === 1,
     t: frame.t,

@@ -22,7 +22,7 @@ export async function api(method, path, body) {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError(0, "Can't reach the server. Your last changes may not be saved; check the connection.");
+    throw new ApiError(0, 'Palvelimeen ei saada yhteyttä. Viimeisimmät muutokset eivät ehkä tallentuneet; tarkista yhteys.');
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data.error || `${res.status} ${res.statusText}`);
@@ -41,7 +41,7 @@ export async function immich(method, path, { body, form, headers = {} } = {}) {
       body: form || (body !== undefined ? JSON.stringify(body) : undefined),
     });
   } catch {
-    throw new ApiError(0, "Can't reach Immich. Your work is saved; try again when the connection is back.");
+    throw new ApiError(0, 'Immichiin ei saada yhteyttä. Työsi on tallessa; yritä uudelleen, kun yhteys palaa.');
   }
   const text = await res.text();
   let data = null;
@@ -52,7 +52,7 @@ export async function immich(method, path, { body, form, headers = {} } = {}) {
   }
   if (!res.ok) {
     const msg = [].concat(data?.message || data?.error || `${res.status} ${res.statusText}`).join(', ');
-    throw new ApiError(res.status, res.status === 401 ? 'Sign in to Immich again (your session ended).' : msg);
+    throw new ApiError(res.status, res.status === 401 ? 'Kirjaudu Immichiin uudelleen (istunto päättyi).' : msg);
   }
   return data;
 }
@@ -102,8 +102,8 @@ export function framesFromAssets(assets) {
 }
 
 // ---- sync --------------------------------------------------------------------------------------
-export const PICK_TAG = 'RinkSide/Pick';
-export const REJECT_TAG = 'RinkSide/Reject';
+export const PICK_TAG = 'RinkSide/Valittu';
+export const REJECT_TAG = 'RinkSide/Hylätty';
 const inScope = (f, scope) => (scope === 'all' ? true : scope === 'kept' ? f.flag !== -1 : f.flag === 1);
 const isoWithZone = (t, tz) => `${new Date(t).toISOString().slice(0, 19)}${/^[+-]\d\d:\d\d$/.test(tz || '') ? tz : 'Z'}`;
 
@@ -124,7 +124,7 @@ export async function runSync(sess, rosters, fileFor, status) {
   const saveProgress = (extra = {}) => api('PATCH', `/s/${sess.id}`, { sync: { assets: sync.assets, applied: sync.applied, sums: sync.sums, ...extra } });
   const frameById = new Map(sess.frames.map((f) => [f.id, f]));
 
-  step('Connecting to Immich');
+  step('Yhdistetään Immichiin');
   await immich('GET', '/server/ping');
 
   if (sess.mode !== 'immich') {
@@ -135,7 +135,7 @@ export async function runSync(sess, rosters, fileFor, status) {
       for (const kind of kinds) if (!sync.assets[f.id]?.[kind]) files.push({ frame: f, kind, info: f[kind] });
     }
     if (files.length) {
-      step('Checking what Immich already has', files.length);
+      step('Tarkistetaan, mitä Immichissä jo on', files.length);
       for (const it of files) {
         const key = `${it.frame.src}|${it.info.rel}|${it.info.size}|${it.info.mtime}`;
         try {
@@ -159,12 +159,12 @@ export async function runSync(sess, rosters, fileFor, status) {
         if (r.action === 'reject' && r.assetId) {
           (sync.assets[it.frame.id] ??= {})[it.kind] = r.assetId;
           status.summary.alreadyThere++;
-        } else if (r.action === 'reject') status.errors.push(`${it.info.rel}: Immich refused it (${r.reason})`);
+        } else if (r.action === 'reject') status.errors.push(`${it.info.rel}: Immich ei hyväksynyt tiedostoa (${r.reason})`);
         else toUpload.push(it);
       }
       await saveProgress();
 
-      step('Uploading', toUpload.length);
+      step('Lähetetään', toUpload.length);
       for (const it of toUpload) {
         status.current = it.file.name;
         try {
@@ -193,7 +193,7 @@ export async function runSync(sess, rosters, fileFor, status) {
           try {
             await immich('POST', '/stacks', { body: { assetIds: [a.jpg, a.nef] } });
           } catch (err) {
-            status.errors.push(`Stack for ${frameById.get(fid)?.name}: ${err.message}`);
+            status.errors.push(`Pino kuvalle ${frameById.get(fid)?.name}: ${err.message}`);
           }
           a.stacked = true;
         }
@@ -221,7 +221,7 @@ export async function runSync(sess, rosters, fileFor, status) {
     }
   }
 
-  step('Updating captions and ratings', wanted.size);
+  step('Päivitetään kuvatekstit ja arvostelut', wanted.size);
   for (const [id, w] of wanted) {
     const was = sync.applied[id] || {};
     const dto = {};
@@ -241,7 +241,7 @@ export async function runSync(sess, rosters, fileFor, status) {
   }
   await saveProgress();
 
-  step('Favorites and archive');
+  step('Suosikit ja arkisto');
   for (const [field, dto] of [
     ['isFavorite', (v) => ({ isFavorite: v })],
     ['archived', (v) => ({ visibility: v ? 'archive' : 'timeline' })],
@@ -254,7 +254,7 @@ export async function runSync(sess, rosters, fileFor, status) {
     }
   }
 
-  step('Tags');
+  step('Tunnisteet');
   const names = [...new Set([...[...wanted.values()].flatMap((w) => w.tags), ...Object.values(sync.applied).flatMap((a) => a.tags || [])])];
   const tagIds = new Map();
   if (names.length) for (const t of await immich('PUT', '/tags', { body: { tags: names } })) tagIds.set(t.value, t.id);
@@ -272,7 +272,7 @@ export async function runSync(sess, rosters, fileFor, status) {
   // One album per game (not for games opened from an Immich album).
   const extra = {};
   if (opts.album && sess.mode !== 'immich') {
-    step('Album');
+    step('Albumi');
     const name = opts.albumName || gameTitle(sess.game, sess.frames[0]?.t);
     const ids = [...wanted].filter(([id, w]) => w.frame.flag !== -1 && !sync.inAlbum.includes(id)).map(([id]) => id);
     if (ids.length) {
@@ -291,7 +291,7 @@ export async function runSync(sess, rosters, fileFor, status) {
 }
 
 // ---- export to Immich: the edited JPEGs ------------------------------------------------------------
-export const EDIT_TAG = 'RinkSide/Edit';
+export const EDIT_TAG = 'RinkSide/Muokattu';
 
 // What decides the pixels of an edit; if it hasn't changed, the photo isn't uploaded again.
 export function editSignature(f, look, options) {

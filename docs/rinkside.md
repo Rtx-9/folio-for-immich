@@ -42,7 +42,7 @@ Folio already sits in front of Immich on the same address, so RinkSide is a page
   - the result goes to the folder you choose, or to a ZIP in browsers without folder
     access.
 - **Export to Immich** uploads those edited JPEGs instead of writing files:
-  - they go into an album, tagged `RinkSide/Edit`, and are stacked on top of the synced
+  - they go into an album, tagged `RinkSide/Muokattu`, and are stacked on top of the synced
     original;
   - an edit is uploaded again only when something that changes its pixels has changed
     (look, crop, size, quality);

@@ -71,17 +71,17 @@ address (the `https://` one).
   Mechanic, Lightroom and wire services. It can also copy the picked NEF+JPG files with
   `.xmp` sidecars.
 - **Export to Immich** sends those edited JPEGs (look and crop applied) to an album in
-  Immich, tagged `RinkSide/Edit`. If the original was synced, the edit is stacked on top
+  Immich, tagged `RinkSide/Muokattu`. If the original was synced, the edit is stacked on top
   of it. Exporting again skips unchanged photos. A photo you changed replaces its earlier
   edit, and the old edit goes to Immich's trash. RinkSide can only trash its own edits,
   never originals.
 - **Sync to Immich** uploads the originals, with your own Immich login (no API key):
   - uploads skip anything Immich already has (SHA-1 check);
   - NEF+JPG pairs are stacked;
-  - picks become favorites and a `RinkSide/Pick` tag;
+  - picks become favorites and a `RinkSide/Valittu` tag;
   - rejects are archived or tagged, never deleted;
   - stars become ratings and captions become descriptions;
-  - players and teams become tags (`Players/…`, `Teams/…`);
+  - players and teams become tags (`Pelaajat/…`, `Joukkueet/…`);
   - each game gets an album.
 
   It can also suggest names for Immich's face-recognition People, and you can cull or
@@ -119,6 +119,13 @@ the card after a reload.
 | `C`, `R`, `Enter`, `Esc` | crop, rotate box, apply, cancel |
 | `H` | automatic horizon |
 | `A`, `Ctrl+Z`, `Ctrl+E`, `?` | auto-advance, undo, export, all shortcuts |
+
+**RinkSide is in Finnish.** Its screens, messages and keyboard help are Finnish. Captions
+default to Finnish (`{pelaajat} ottelussa {koti} – {vieras}, {sarja}, {halli}, {kaupunki},
+{pvm}.`, with dates like 29.10.2026); choose an English template and date style in
+Game setup if you need English captions. The English template codes (`{players}`,
+`{home}`…) still work. Tags in Immich are Finnish too: `Pelaajat/…`, `Joukkueet/…`,
+`RinkSide/Valittu`, `RinkSide/Hylätty` and `RinkSide/Muokattu`.
 
 Firefox and Safari can't keep access to a card or write to a folder. They pick the card
 again after a reload, and export as a ZIP download. Why RinkSide isn't an Immich plugin,

@@ -1,8 +1,11 @@
 // Rosters, player codes and caption templates. Shared by the browser (live
 // preview) and the server (export and Immich sync), so both say the same thing.
 
-export const DEFAULT_TEMPLATE = '{players} during the {league} game between {home} and {away} at {venue}, {city}, on {date}.';
-export const TOKENS = ['players', 'names', 'home_players', 'away_players', 'home', 'away', 'league', 'venue', 'city', 'country', 'date', 'byline'];
+// Finnish by default. The English codes ({players}, {home}…) work too.
+export const DEFAULT_TEMPLATE = '{pelaajat} ottelussa {koti} – {vieras}, {sarja}, {halli}, {kaupunki}, {pvm}.';
+export const ENGLISH_TEMPLATE = '{players} during the {league} game between {home} and {away} at {venue}, {city}, on {date}.';
+export const TOKENS = ['pelaajat', 'nimet', 'kotipelaajat', 'vieraspelaajat', 'koti', 'vieras', 'sarja', 'halli', 'kaupunki', 'maa', 'pvm', 'kuvaaja'];
+export const DEFAULT_PATTERN = '{pvm}_{koti}-{vieras}_{nro}';
 
 // "23 Matti Virtanen", "#23 Matti Virtanen", "23. Matti Virtanen", "Matti Virtanen 23",
 // "23<TAB>Matti Virtanen" or "23,Matti Virtanen" — one player per line.
@@ -44,13 +47,15 @@ export function joinList(items, lang = 'en') {
   return `${items.slice(0, -1).join(', ')} ${AND[lang] || AND.en} ${items.at(-1)}`;
 }
 
+const FI_MONTHS = ['tammikuuta', 'helmikuuta', 'maaliskuuta', 'huhtikuuta', 'toukokuuta', 'kesäkuuta', 'heinäkuuta', 'elokuuta', 'syyskuuta', 'lokakuuta', 'marraskuuta', 'joulukuuta'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 // `t` is camera wall-clock time stored as if it were UTC.
-export function formatDate(t, style = 'en-US') {
+export function formatDate(t, style = 'fi') {
   if (t === undefined || t === null || !Number.isFinite(t)) return '';
   const d = new Date(t);
   const [y, mo, day] = [d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()];
-  if (style === 'fi') return `${day}.${mo + 1}.${y}`;
+  if (style === 'fi' || !style) return `${day}.${mo + 1}.${y}`;
+  if (style === 'fi-long') return `${day}. ${FI_MONTHS[mo]} ${y}`;
   if (style === 'en-GB') return `${day} ${MONTHS[mo]} ${y}`;
   if (style === 'iso') return isoDate(t);
   return `${MONTHS[mo]} ${day}, ${y}`;
@@ -102,9 +107,9 @@ export function fillTemplate(template, fields) {
 // Everything a caption can use, for one frame.
 export function fieldsFor(frame, game = {}, rosters = {}) {
   const players = parsePlayers(frame.players, game, rosters);
-  const lang = game.dateStyle === 'fi' ? 'fi' : 'en';
+  const lang = String(game.dateStyle || 'fi').startsWith('en') ? 'en' : 'fi';
   const withTeam = (p) => (p.team ? `${p.name} (${p.team})` : p.name);
-  return {
+  const f = {
     players: joinList(players.map(withTeam), lang),
     names: joinList(players.map((p) => p.name), lang),
     home_players: joinList(players.filter((p) => p.side === 'home').map((p) => p.name), lang),
@@ -118,6 +123,8 @@ export function fieldsFor(frame, game = {}, rosters = {}) {
     date: formatDate(frame.t, game.dateStyle),
     byline: game.byline,
   };
+  // Finnish names for the same codes.
+  return { ...f, pelaajat: f.players, nimet: f.names, kotipelaajat: f.home_players, vieraspelaajat: f.away_players, koti: f.home, vieras: f.away, sarja: f.league, halli: f.venue, kaupunki: f.city, maa: f.country, pvm: f.date, kuvaaja: f.byline };
 }
 
 export function captionFor(frame, game = {}, rosters = {}) {
@@ -140,10 +147,10 @@ export function keywordsFor(frame, game = {}, rosters = {}) {
     .filter((w) => w && !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase()));
 }
 
-// Name of the game, used for albums and export folders: "2026-10-29 HIFK vs Tappara".
+// Name of the game, used for albums and export folders: "2026-10-29 HIFK – Tappara".
 export function gameTitle(game = {}, t) {
-  const teams = [game.home, game.away].filter(Boolean).join(' vs ');
-  return [isoDate(game.date ? Date.parse(game.date) : t), teams || 'Hockey'].filter(Boolean).join(' ');
+  const teams = [game.home, game.away].filter(Boolean).join(' – ');
+  return [isoDate(game.date ? Date.parse(game.date) : t), teams || 'Jääkiekko'].filter(Boolean).join(' ');
 }
 
 // Safe ASCII for file names: "Kärpät" → "Karpat".
@@ -171,10 +178,11 @@ export function fileName(pattern, frame, game = {}, seq = 1, camera = '') {
     name: slug(frame.name),
     camera: slug(camera),
   };
-  const name = String(pattern || '{date}_{home}-{away}_{seq}')
+  Object.assign(fields, { pvm: fields.date, aika: fields.time, koti: fields.home, vieras: fields.away, sarja: fields.league, nro: fields.seq, nimi: fields.name, kamera: fields.camera });
+  const name = String(pattern || DEFAULT_PATTERN)
     .replace(/\{(\w+)\}/g, (all, k) => (k in fields ? fields[k] : ''))
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
     .replace(/([_-])[_-]+/g, '$1')
     .replace(/^[_\-.\s]+|[_\-.\s]+$/g, '');
-  return name || `photo_${fields.seq}`;
+  return name || `kuva_${fields.seq}`;
 }

@@ -26,9 +26,9 @@ async function getJson(url) {
   try {
     res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
   } catch (err) {
-    throw new HttpError(502, `Couldn't reach liiga.fi (${err.cause?.code || err.name}). You can still type the teams and rosters yourself.`);
+    throw new HttpError(502, `liiga.fi:hin ei saada yhteyttä (${err.cause?.code || err.name}). Voit silti kirjoittaa joukkueet ja kokoonpanot itse.`);
   }
-  if (!res.ok) throw new HttpError(502, `liiga.fi answered ${res.status}`);
+  if (!res.ok) throw new HttpError(502, `liiga.fi vastasi ${res.status}`);
   return res.json();
 }
 
@@ -94,7 +94,7 @@ async function seasonGames(season) {
 
 // Games on a day (YYYY-MM-DD, local time of the game).
 export async function gamesOn(date) {
-  if (!/^\d{4}-\d\d-\d\d$/.test(date)) throw new HttpError(400, 'Date must be YYYY-MM-DD');
+  if (!/^\d{4}-\d\d-\d\d$/.test(date)) throw new HttpError(400, 'Päivämäärän pitää olla muotoa VVVV-KK-PP');
   const games = await seasonGames(seasonOf(date));
   return games.filter((g) => String(g.start).slice(0, 10) === date).sort((a, b) => String(a.start).localeCompare(String(b.start)) || a.home.localeCompare(b.home, 'fi'));
 }
@@ -121,7 +121,7 @@ const byNumber = (a, b) => Number(a.num) - Number(b.num) || a.name.localeCompare
 export async function lineup(season, id) {
   const games = await seasonGames(season);
   const g = games.find((x) => String(x.id) === String(id));
-  if (!g) throw new HttpError(404, 'Game not found on liiga.fi');
+  if (!g) throw new HttpError(404, 'Ottelua ei löytynyt liiga.fi:stä');
   const detail = await cached(`game-${season}-${id}`, g.ended ? 30 * 86400e3 : 10 * 60e3, () => getJson(`${API}/games/${season}/${id}`));
   const side = async (list, team) => {
     const players = (list || []).filter((p) => !p.removed && p.jersey !== undefined && p.jersey !== null).map(player).sort(byNumber);
@@ -144,16 +144,16 @@ export async function roster(season, team) {
 
 // Player photos, cached on disk (they rarely change and are ~0.5 MB each).
 export async function photo(url) {
-  if (!PHOTO_PREFIXES.some((p) => String(url).startsWith(p))) throw new HttpError(400, 'Not a Liiga player photo');
+  if (!PHOTO_PREFIXES.some((p) => String(url).startsWith(p))) throw new HttpError(400, 'Ei Liigan pelaajakuva');
   const file = path.join(CACHE, 'photos', crypto.createHash('sha1').update(url).digest('hex'));
   if (fs.existsSync(file)) return fs.readFileSync(file);
   let res;
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(20000) });
   } catch {
-    throw new HttpError(502, 'Photo not available');
+    throw new HttpError(502, 'Kuva ei saatavilla');
   }
-  if (!res.ok) throw new HttpError(404, 'Photo not found');
+  if (!res.ok) throw new HttpError(404, 'Kuvaa ei löytynyt');
   const buf = Buffer.from(await res.arrayBuffer());
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, buf);

@@ -2,7 +2,7 @@
 // Photos are read from the card by this browser; picks and edits are saved by
 // Folio for your Immich account; Immich is reached with your Immich login.
 import { albumAssets, api, editSignature, exportEdit, framesFromAssets, immich, immichUrl, runSync, suggestPeople } from './backend.js';
-import { captionFor, DEFAULT_TEMPLATE, fileName, gameTitle, parsePlayers, parseRoster, rosterText, slug, TOKENS } from './caption.js';
+import { captionFor, DEFAULT_PATTERN, DEFAULT_TEMPLATE, fileName, gameTitle, parsePlayers, parseRoster, rosterText, slug, TOKENS } from './caption.js';
 import { Card, freeName, hasFolderAccess, loadHandle, pickCard, pickExportFolder, saveHandle, writable, writeFile, Zip } from './card.js';
 import { decode, detectTilt, fitCrop, iceColor, isNeutral, LOOK_DEFAULTS, neutralize, Renderer, sampleAt } from './look.js';
 import { cameraLabel, exifFromDetails, frameMeta, fullBlob, scanFiles, sourceExif, tagJpeg, thumbBlob, xmpPacket } from './media.js';
@@ -42,6 +42,7 @@ function fmtTime(t, withCs = true) {
   return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}${withCs ? `.${pad(Math.floor(d.getUTCMilliseconds() / 10))}` : ''}`;
 }
 const fmtDate = (t) => (Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : '');
+const fiDate = (iso) => (iso ? `${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}.${iso.slice(0, 4)}` : '');
 
 // ---------------------------------------------------------------------------
 // State
@@ -79,7 +80,7 @@ const isImmich = () => S.sess?.mode === 'immich';
 // ---------------------------------------------------------------------------
 async function fileFor(f, kind) {
   const card = S.cards.get(f.src);
-  if (!card) throw new Error('The card for this photo is not connected');
+  if (!card) throw new Error('Tämän kuvan muistikortti ei ole yhdistettynä');
   return card.file(f[kind].rel);
 }
 
@@ -141,21 +142,21 @@ async function showHome() {
   S.state = state;
   const games = $('#games');
   games.replaceChildren();
-  if (!state.sessions.length) games.append(h('p', { class: 'muted', text: 'No games yet.' }));
+  if (!state.sessions.length) games.append(h('p', { class: 'muted', text: 'Ei vielä pelejä.' }));
   for (const g of state.sessions) {
     const teams = [g.game.home, g.game.away].filter(Boolean).join(' – ');
     games.append(
       h(
         'div',
         { class: 'game-row', onclick: () => openGame(g.id) },
-        h('div', {}, h('div', { class: 't', text: g.name || teams || 'Untitled game' }), h('div', { class: 'meta', text: [fmtDate(g.first), g.game.league, g.mode === 'immich' ? 'Immich album' : g.sources.map((s) => s.label).join(' + ')].filter(Boolean).join(' · ') })),
-        h('div', { class: 'meta' }, `${g.count} photos · ${g.picks} picks`, g.synced ? h('span', { class: 'badge', text: ' synced' }) : ''),
+        h('div', {}, h('div', { class: 't', text: g.name || teams || 'Nimetön peli' }), h('div', { class: 'meta', text: [fiDate(fmtDate(g.first)), g.game.league, g.mode === 'immich' ? 'Immich-albumi' : g.sources.map((s) => s.label).join(' + ')].filter(Boolean).join(' · ') })),
+        h('div', { class: 'meta' }, `${g.count} kuvaa · ${g.picks} valittua`, g.synced ? h('span', { class: 'badge', text: ' synkronoitu' }) : ''),
         h('button', {
           class: 'ghost',
-          title: 'Remove this game from RinkSide (photos on the card and in Immich are not touched)',
+          title: 'Poista peli RinkSidesta (kortin ja Immichin kuviin ei kosketa)',
           onclick: async (e) => {
             e.stopPropagation();
-            if (!confirm(`Remove “${g.name || teams || 'Untitled game'}” from RinkSide?\nPicks, captions and edits for it are forgotten. Photos on the card and in Immich are not touched.`)) return;
+            if (!confirm(`Poistetaanko “${g.name || teams || 'Nimetön peli'}” RinkSidesta?\nSen valinnat, kuvatekstit ja säädöt unohdetaan. Kortin ja Immichin kuviin ei kosketa.`)) return;
             await api('DELETE', `/s/${g.id}`).catch(fail);
             showHome();
           },
@@ -194,11 +195,11 @@ async function scanCards(cards, firstId = 'a') {
   const errors = [];
   let id = firstId;
   for (const card of cards) {
-    msg.textContent = `Looking for photos on ${card.label}…`;
+    msg.textContent = `Etsitään kuvia kortilta ${card.label}…`;
     bar.style.width = '3%';
     const entries = await card.list();
     const r = await scanFiles(id, entries, (done, total) => {
-      msg.textContent = `Reading ${card.label}… ${done} / ${total}`;
+      msg.textContent = `Luetaan korttia ${card.label}… ${done} / ${total}`;
       bar.style.width = `${(done / total) * 100}%`;
     });
     sources.push({ id, label: card.label, card });
@@ -207,7 +208,7 @@ async function scanCards(cards, firstId = 'a') {
     id = String.fromCharCode(id.charCodeAt(0) + 1);
   }
   box.hidden = true;
-  if (errors.length) toast(`${errors.length} file(s) could not be read: ${errors[0].file} – ${errors[0].error}`, { error: true, ms: 8000 });
+  if (errors.length) toast(`${errors.length} tiedostoa ei voitu lukea: ${errors[0].file} – ${errors[0].error}`, { error: true, ms: 8000 });
   return { sources, frames };
 }
 
@@ -229,7 +230,7 @@ $('#start-game').onclick = async () => {
   $('#start-game').disabled = true;
   try {
     const { sources, frames } = await scanCards(chosen);
-    if (!frames.length) throw new Error('No photos found on that card (looked for JPG and NEF files).');
+    if (!frames.length) throw new Error('Kortilta ei löytynyt kuvia (etsittiin JPG- ja NEF-tiedostoja).');
     const { id } = await api('POST', '/sessions', { sources: sources.map(({ id: sid, label }) => ({ id: sid, label })), frames, cameras: camerasFor(frames) });
     for (const s of sources) {
       if (s.card.handle) await saveHandle(`${id}:${s.id}`, s.card.handle);
@@ -294,8 +295,8 @@ async function connectCards(ask) {
   }
   const names = missing.map((m) => m.src.label).join(' and ');
   const needsPick = missing.some((m) => m.state !== 'prompt');
-  $('#reconnect-text').textContent = needsPick ? `Insert the card ${names} and choose it to see the photos.` : `Allow access to ${names} to see the photos.`;
-  $('#reconnect-btn').textContent = needsPick ? `Choose ${missing[0].src.label}…` : 'Allow access';
+  $('#reconnect-text').textContent = needsPick ? `Laita kortti ${names} koneeseen ja valitse se nähdäksesi kuvat.` : `Salli pääsy korttiin ${names} nähdäksesi kuvat.`;
+  $('#reconnect-btn').textContent = needsPick ? `Valitse ${missing[0].src.label}…` : 'Salli pääsy';
   box.hidden = false;
   return false;
 }
@@ -312,7 +313,7 @@ $('#reconnect-btn').onclick = async () => {
     try {
       await card.file((probe.jpg || probe.nef).rel);
     } catch {
-      return toast(`That isn't ${first.src.label}: ${(probe.jpg || probe.nef).rel} is not on it.`, { error: true, ms: 6000 });
+      return toast(`Tämä ei ole ${first.src.label}: kortilla ei ole tiedostoa ${(probe.jpg || probe.nef).rel}.`, { error: true, ms: 6000 });
     }
     S.cards.set(first.src.id, card);
     if (card.handle) await saveHandle(`${S.sess.id}:${first.src.id}`, card.handle);
@@ -342,7 +343,7 @@ async function loadSession(id, { keep = false } = {}) {
 function gameName() {
   const g = S.sess.game || {};
   const teams = [g.home, g.away].filter(Boolean).join(' – ');
-  return teams ? `${teams} · ${fmtDate(S.frames[0]?.t)}` : S.sess.name || 'Untitled game';
+  return teams ? `${teams} · ${fiDate(fmtDate(S.frames[0]?.t))}` : S.sess.name || 'Nimetön peli';
 }
 
 function resort() {
@@ -371,11 +372,11 @@ function closeGame() {
 // Filters and navigation
 // ---------------------------------------------------------------------------
 const FILTERS = [
-  ['all', 'All', () => true],
-  ['picks', 'Picks', (f) => f.flag === 1],
-  ['unflagged', 'Unflagged', (f) => !f.flag],
-  ['norejects', 'Hide rejects', (f) => f.flag !== -1],
-  ['rated', 'Rated', (f) => f.stars > 0],
+  ['all', 'Kaikki', () => true],
+  ['picks', 'Valitut', (f) => f.flag === 1],
+  ['unflagged', 'Merkitsemättömät', (f) => !f.flag],
+  ['norejects', 'Piilota hylätyt', (f) => f.flag !== -1],
+  ['rated', 'Tähdelliset', (f) => f.stars > 0],
 ];
 
 function rebuildOrder(keepId = cur()?.id) {
@@ -498,7 +499,7 @@ async function show({ skim = false } = {}) {
     draw();
     $('#skim').hidden = true;
     $('#empty').hidden = false;
-    $('#empty').textContent = S.frames.length ? 'No photos match this filter.' : 'No photos in this game yet.';
+    $('#empty').textContent = S.frames.length ? 'Mikään kuva ei vastaa suodatinta.' : 'Pelissä ei ole vielä kuvia.';
     return;
   }
   $('#empty').hidden = true;
@@ -684,8 +685,8 @@ new ResizeObserver(() => {
 // Chrome: info, badges, panel
 // ---------------------------------------------------------------------------
 function flagEl(f) {
-  if (f.flag === 1) return h('span', { class: 'flag pick', title: 'Pick', text: '✓' });
-  if (f.flag === -1) return h('span', { class: 'flag reject', title: 'Reject', text: '✕' });
+  if (f.flag === 1) return h('span', { class: 'flag pick', title: 'Valittu', text: '✓' });
+  if (f.flag === -1) return h('span', { class: 'flag reject', title: 'Hylätty', text: '✕' });
   return null;
 }
 const starsText = (n) => (n ? '★'.repeat(n) : '');
@@ -720,11 +721,11 @@ function renderPanel() {
   const off = S.sess.cameras?.[f.cam]?.offset || 0;
   $('#frame-info').replaceChildren(
     ...[
-      ['File', [f.jpg && f.jpg.rel, f.nef && f.nef.rel, f.asset && f.asset.file].filter(Boolean).join('\n')],
-      ['Camera', `${camLabel(f)}${ex.lens ? ` · ${ex.lens}` : ''}`],
-      ['Exposure', [ex.exposure, ex.fnumber && `f/${Math.round(ex.fnumber * 10) / 10}`, ex.iso && `ISO ${ex.iso}`, ex.focal && `${Math.round(ex.focal)} mm`].filter(Boolean).join(' · ')],
-      ['Time', `${fmtDate(f.t)} ${fmtTime(f.t)}${off ? ` (camera) → ${fmtTime(adjusted(f))}` : ''}`],
-      ['Size', `${f.o >= 5 ? f.h : f.w} × ${f.o >= 5 ? f.w : f.h}`],
+      ['Tiedosto', [f.jpg && f.jpg.rel, f.nef && f.nef.rel, f.asset && f.asset.file].filter(Boolean).join('\n')],
+      ['Kamera', `${camLabel(f)}${ex.lens ? ` · ${ex.lens}` : ''}`],
+      ['Valotus', [ex.exposure, ex.fnumber && `f/${Math.round(ex.fnumber * 10) / 10}`, ex.iso && `ISO ${ex.iso}`, ex.focal && `${Math.round(ex.focal)} mm`].filter(Boolean).join(' · ')],
+      ['Aika', `${fmtDate(f.t)} ${fmtTime(f.t)}${off ? ` (kamera) → ${fmtTime(adjusted(f))}` : ''}`],
+      ['Koko', `${f.o >= 5 ? f.h : f.w} × ${f.o >= 5 ? f.w : f.h}`],
     ]
       .filter(([, v]) => v)
       .flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { text: v })]),
@@ -735,7 +736,7 @@ function renderCaption() {
   const f = cur();
   if (!f) return;
   const players = parsePlayers($('#players').value, S.sess.game, S.rosters);
-  $('#player-chips').replaceChildren(...players.map((p) => h('span', { class: `chip ${p.side}${p.known ? '' : ' unknown'}`, title: p.known ? '' : 'Not in the roster', text: `${p.side === 'away' ? 'a' : ''}#${p.num} ${p.known ? p.name : '?'}${p.team ? ` · ${p.team}` : ''}` })));
+  $('#player-chips').replaceChildren(...players.map((p) => h('span', { class: `chip ${p.side}${p.known ? '' : ' unknown'}`, title: p.known ? '' : 'Ei kokoonpanossa', text: `${p.side === 'away' ? 'a' : ''}#${p.num} ${p.known ? p.name : '?'}${p.team ? ` · ${p.team}` : ''}` })));
   $('#caption-preview').textContent = captionFor({ ...f, players: $('#players').value, caption: $('#custom-caption').value || null }, S.sess.game, S.rosters) || '—';
 }
 
@@ -757,7 +758,7 @@ function renderPlayers() {
     if (!team) continue;
     const roster = S.rosters[team] || [];
     sections.push(
-      h('div', { class: 'team-head' }, h('span', { text: `${team}${side === 'away' ? ' (away)' : ''}` })),
+      h('div', { class: 'team-head' }, h('span', { text: `${team}${side === 'away' ? ' (vieras)' : ''}` })),
       roster.length
         ? h(
             'div',
@@ -775,10 +776,10 @@ function renderPlayers() {
               );
             }),
           )
-        : h('p', { class: 'muted small', text: 'No roster yet: add it in Game setup, or choose the Liiga game there.' }),
+        : h('p', { class: 'muted small', text: 'Ei vielä kokoonpanoa: lisää se pelin tiedoissa tai valitse siellä Liiga-ottelu.' }),
     );
   }
-  if (!sections.length) sections.push(h('p', { class: 'muted small', text: 'Choose the teams in Game setup to see their players here.' }));
+  if (!sections.length) sections.push(h('p', { class: 'muted small', text: 'Valitse joukkueet pelin tiedoissa, niin niiden pelaajat näkyvät tässä.' }));
   $('#player-grid').replaceChildren(...sections);
 }
 
@@ -823,11 +824,11 @@ function setFrames(ids, set, { undo = true, advance = false } = {}) {
 
 function undo() {
   const last = S.undo.pop();
-  if (!last) return toast('Nothing to undo');
+  if (!last) return toast('Ei mitään kumottavaa');
   for (const { id, prev } of last) setFrames([id], prev, { undo: false });
   const first = S.order.findIndex((f) => f.id === last[0].id);
   if (first >= 0) go(first);
-  toast('Undone');
+  toast('Kumottu');
 }
 
 const targets = () => (S.mode === 'grid' && S.selection.size > 1 ? [...S.selection] : cur() ? [cur().id] : []);
@@ -889,9 +890,9 @@ function samePlayers() {
   const f = cur();
   const i = S.frames.indexOf(f);
   const prev = S.frames.slice(0, i).reverse().find((x) => x.players);
-  if (!f || !prev) return toast('No earlier photo has players yet');
+  if (!f || !prev) return toast('Aiemmissa kuvissa ei ole vielä pelaajia');
   setFrames([f.id], { players: prev.players });
-  toast(`Players: ${prev.players}`);
+  toast(`Pelaajat: ${prev.players}`);
 }
 $('#same-players').onclick = samePlayers;
 $('#clear-caption').onclick = () => cur() && setFrames([cur().id], { players: '', caption: null });
@@ -900,20 +901,20 @@ $('#clear-caption').onclick = () => cur() && setFrames([cur().id], { players: ''
 // Look
 // ---------------------------------------------------------------------------
 const SLIDERS = [
-  ['exposure', 'Exposure', -3, 3, 0.05],
-  ['temp', 'Temp', -100, 100, 1],
-  ['tint', 'Tint', -100, 100, 1],
-  ['contrast', 'Contrast', -100, 100, 1],
-  ['highlights', 'Highlights', -100, 100, 1],
-  ['shadows', 'Shadows', -100, 100, 1],
-  ['saturation', 'Saturation', -100, 100, 1],
+  ['exposure', 'Valotus', -3, 3, 0.05],
+  ['temp', 'Lämpötila', -100, 100, 1],
+  ['tint', 'Sävy', -100, 100, 1],
+  ['contrast', 'Kontrasti', -100, 100, 1],
+  ['highlights', 'Kirkkaat', -100, 100, 1],
+  ['shadows', 'Varjot', -100, 100, 1],
+  ['saturation', 'Kylläisyys', -100, 100, 1],
 ];
 $('#sliders').replaceChildren(
   ...SLIDERS.map(([key, label, min, max, st]) =>
     h(
       'div',
       { class: 'slider' },
-      h('label', { for: `s-${key}`, title: 'Double-click to reset', ondblclick: () => setLook({ [key]: 0 }), text: label }),
+      h('label', { for: `s-${key}`, title: 'Nollaa kaksoisklikkauksella', ondblclick: () => setLook({ [key]: 0 }), text: label }),
       h('input', { type: 'range', id: `s-${key}`, min, max, step: st, oninput: (e) => setLook({ [key]: Number(e.target.value) }, { live: true }), onchange: (e) => setLook({ [key]: Number(e.target.value) }) }),
       h('output', { id: `o-${key}` }),
     ),
@@ -925,7 +926,7 @@ function renderLookPanel() {
   const own = Boolean(f?.look);
   $('#scope-game').classList.toggle('on', !own);
   $('#scope-photo').classList.toggle('on', own);
-  $('#look-note').textContent = own ? 'This photo has its own look.' : 'Changes apply to the whole game.';
+  $('#look-note').textContent = own ? 'Tällä kuvalla on omat säädöt.' : 'Muutokset koskevat koko peliä.';
   const look = effectiveLook(f);
   for (const [key] of SLIDERS) {
     const v = look[key] || 0;
@@ -937,13 +938,13 @@ function renderLookPanel() {
 // Presets: a few built in, plus your own (saved in Folio for your account).
 // Built-in presets leave white balance alone, so the ice stays neutral.
 const BUILTIN_PRESETS = [
-  { name: 'Neutral', look: { exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0 } },
-  { name: 'Arena punch', look: { contrast: 25, highlights: -20, shadows: 15, saturation: 15 } },
-  { name: 'Bright ice', look: { exposure: 0.4, contrast: 10, highlights: -30, shadows: 10 } },
-  { name: 'Crisp & cool', look: { contrast: 20, highlights: -15, saturation: -5, tint: -3 } },
-  { name: 'Warm & rich', look: { contrast: 15, shadows: 10, saturation: 25 } },
-  { name: 'Flat (for editing later)', look: { contrast: -25, highlights: -40, shadows: 40, saturation: -10 } },
-  { name: 'Black & white', look: { contrast: 30, highlights: -10, saturation: -100 } },
+  { name: 'Neutraali', look: { exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0 } },
+  { name: 'Napakka areena', look: { contrast: 25, highlights: -20, shadows: 15, saturation: 15 } },
+  { name: 'Kirkas jää', look: { exposure: 0.4, contrast: 10, highlights: -30, shadows: 10 } },
+  { name: 'Raikas ja viileä', look: { contrast: 20, highlights: -15, saturation: -5, tint: -3 } },
+  { name: 'Lämmin ja täyteläinen', look: { contrast: 15, shadows: 10, saturation: 25 } },
+  { name: 'Tasainen (jatkokäsittelyyn)', look: { contrast: -25, highlights: -40, shadows: 40, saturation: -10 } },
+  { name: 'Mustavalkoinen', look: { contrast: 30, highlights: -10, saturation: -100 } },
 ];
 const userPresets = () => S.state?.presets || [];
 
@@ -951,9 +952,9 @@ function renderPresets() {
   const sel = $('#preset-select');
   const mine = userPresets();
   sel.replaceChildren(
-    h('option', { value: '', text: 'Presets…' }),
-    h('optgroup', { label: 'Built in' }, ...BUILTIN_PRESETS.map((p, i) => h('option', { value: `b${i}`, text: p.name }))),
-    ...(mine.length ? [h('optgroup', { label: 'Yours' }, ...mine.map((p, i) => h('option', { value: `u${i}`, text: p.name })))] : []),
+    h('option', { value: '', text: 'Esiasetukset…' }),
+    h('optgroup', { label: 'Valmiit' }, ...BUILTIN_PRESETS.map((p, i) => h('option', { value: `b${i}`, text: p.name }))),
+    ...(mine.length ? [h('optgroup', { label: 'Omat' }, ...mine.map((p, i) => h('option', { value: `u${i}`, text: p.name })))] : []),
   );
   $('#preset-delete').disabled = true;
 }
@@ -963,7 +964,7 @@ const presetFor = (v) => (v?.[0] === 'b' ? BUILTIN_PRESETS[Number(v.slice(1))] :
 function applyPreset(preset) {
   if (!preset) return;
   setLook({ ...preset.look });
-  toast(`Preset “${preset.name}” applied${cur()?.look ? ' to this photo' : ' to the whole game'}`);
+  toast(`Esiasetus “${preset.name}” käytössä${cur()?.look ? ' tässä kuvassa' : ' koko pelissä'}`);
 }
 $('#preset-select').onchange = (e) => {
   const v = e.target.value;
@@ -971,7 +972,7 @@ $('#preset-select').onchange = (e) => {
   applyPreset(presetFor(v));
 };
 $('#preset-save').onclick = async () => {
-  const name = prompt('Name for this preset:')?.trim();
+  const name = prompt('Esiasetuksen nimi:')?.trim();
   if (!name) return;
   const look = { ...effectiveLook(cur()) };
   if (!$('#preset-wb').checked) {
@@ -982,14 +983,14 @@ $('#preset-save').onclick = async () => {
     const { presets } = await api('PUT', '/presets', { presets: [...userPresets().filter((p) => p.name !== name), { name, look }] });
     S.state.presets = presets;
     renderPresets();
-    toast(`Preset “${name}” saved`);
+    toast(`Esiasetus “${name}” tallennettu`);
   } catch (err) {
     fail(err);
   }
 };
 $('#preset-delete').onclick = async () => {
   const p = presetFor($('#preset-select').value);
-  if (!p || !userPresets().includes(p) || !confirm(`Delete the preset “${p.name}”?`)) return;
+  if (!p || !userPresets().includes(p) || !confirm(`Poistetaanko esiasetus “${p.name}”?`)) return;
   try {
     const { presets } = await api('PUT', '/presets', { presets: userPresets().filter((x) => x !== p) });
     S.state.presets = presets;
@@ -1020,14 +1021,14 @@ $('#scope-photo').onclick = () => cur() && !cur().look && setFrames([cur().id], 
 $('#look-reset').onclick = () => (cur()?.look ? setFrames([cur().id], { look: null }) : setLook({ ...LOOK_DEFAULTS }));
 function copyLook() {
   S.clipboard = { ...effectiveLook(cur()) };
-  toast('Look copied');
+  toast('Säädöt kopioitu');
 }
 function pasteLook(toPicks = false) {
-  if (!S.clipboard) return toast('Copy a look first (Ctrl+C)');
+  if (!S.clipboard) return toast('Kopioi ensin säädöt (Ctrl+C)');
   const ids = toPicks ? S.frames.filter((f) => f.flag === 1).map((f) => f.id) : targets();
-  if (!ids.length) return toast('No picks yet');
+  if (!ids.length) return toast('Ei vielä valittuja kuvia');
   setFrames(ids, { look: { ...S.clipboard } });
-  toast(toPicks ? `Look pasted to ${ids.length} picks` : 'Look pasted');
+  toast(toPicks ? `Säädöt liitetty ${ids.length} valittuun kuvaan` : 'Säädöt liitetty');
 }
 $('#look-copy').onclick = copyLook;
 $('#look-paste').onclick = () => pasteLook(false);
@@ -1037,7 +1038,7 @@ function startPick() {
   if (S.mode !== 'loupe' || !disp) return;
   S.picking = !S.picking;
   $('#stage').classList.toggle('picking', S.picking);
-  if (S.picking) toast('Click on the ice to set white balance');
+  if (S.picking) toast('Klikkaa jäätä asettaaksesi valkotasapainon');
 }
 $('#wb-pick').onclick = () => {
   S.tab = 'look';
@@ -1058,12 +1059,12 @@ function pickWhite(e) {
   S.picking = false;
   $('#stage').classList.remove('picking');
   const at = toImage(e.clientX, e.clientY);
-  if (!at || at.img !== disp.bitmap) return toast('Click on the photo (not at 100%)');
+  if (!at || at.img !== disp.bitmap) return toast('Klikkaa kuvaa (ei 100 %:n näkymässä)');
   const x = Math.round(at.bx);
   const y = Math.round(at.by);
   const img = samplerFor().ctx.getImageData(Math.max(0, x - 4), Math.max(0, y - 4), 9, 9);
   setLook(neutralize(sampleAt(img, 4, 4, 4)));
-  toast('White balance set from the ice');
+  toast('Valkotasapaino asetettu jäästä');
 }
 
 function autoWhite() {
@@ -1073,9 +1074,9 @@ function autoWhite() {
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(disp.bitmap, 0, 0, c.width, c.height);
   const ice = iceColor(ctx.getImageData(0, 0, c.width, c.height));
-  if (!ice) return toast('Not enough ice in this photo — try one with more ice, or pick it (W)', { error: true });
+  if (!ice) return toast('Kuvassa ei ole tarpeeksi jäätä: kokeile kuvaa, jossa on enemmän jäätä, tai valitse jää itse (W)', { error: true });
   setLook(neutralize(ice));
-  toast('White balance set from the ice');
+  toast('Valkotasapaino asetettu jäästä');
 }
 $('#wb-auto').onclick = autoWhite;
 
@@ -1083,7 +1084,7 @@ $('#wb-auto').onclick = autoWhite;
 // Crop
 // ---------------------------------------------------------------------------
 const RATIOS = [
-  ['free', 'Free'],
+  ['free', 'Vapaa'],
   ['3:2', '3:2'],
   ['4:5', '4:5'],
   ['16:9', '16:9'],
@@ -1100,10 +1101,10 @@ const ratioValue = (key) => {
 function renderCropPanel() {
   const ratio = S.cropEdit?.ratio || cur()?.crop?.ratio || 'free';
   $('#ratios').replaceChildren(...RATIOS.map(([key, label]) => h('button', { class: ratio === key || ROTATED[ratio] === key ? 'on' : '', onclick: () => setRatio(key) }, label)));
-  $('#crop-edit').textContent = S.cropEdit ? 'Apply (Enter)' : 'Crop (C)';
+  $('#crop-edit').textContent = S.cropEdit ? 'Hyväksy (Enter)' : 'Rajaa (C)';
   const angle = (S.cropEdit ? S.cropEdit.angle : cur()?.crop?.angle) || 0;
   if (document.activeElement !== $('#straighten')) $('#straighten').value = angle;
-  $('#straighten-out').textContent = `${angle > 0 ? '+' : ''}${angle.toFixed(1)}°`;
+  $('#straighten-out').textContent = `${angle > 0 ? '+' : ''}${angle.toFixed(1).replace('.', ',')}°`;
 }
 
 function startCrop() {
@@ -1295,21 +1296,21 @@ async function autoHorizon(f = cur(), { quiet = false } = {}) {
   if (own) bitmap.close();
   const angle = detectTilt(ctx.getImageData(0, 0, c.width, c.height));
   if (angle === null) {
-    if (!quiet) toast('No clear horizon found (no long straight lines) — use the Straighten slider', { error: true });
+    if (!quiet) toast('Selvää horisonttia ei löytynyt (ei pitkiä suoria viivoja): käytä Suorista-liukua', { error: true });
     return null;
   }
   setFrames([f.id], { crop: straightened(f, angle) });
-  if (!quiet) toast(angle ? `Straightened by ${angle > 0 ? '+' : ''}${angle.toFixed(1)}°` : 'Already level');
+  if (!quiet) toast(angle ? `Suoristettu ${angle > 0 ? '+' : ''}${angle.toFixed(1).replace('.', ',')}°` : 'Kuva on jo suorassa');
   return angle;
 }
 $('#horizon-auto').onclick = () => autoHorizon().catch(fail);
 $('#horizon-picks').onclick = async () => {
   const picks = S.frames.filter((f) => f.flag === 1);
-  if (!picks.length) return toast('No picks yet');
+  if (!picks.length) return toast('Ei vielä valittuja kuvia');
   let leveled = 0;
   let none = 0;
   for (const [i, f] of picks.entries()) {
-    toast(`Levelling picks… ${i + 1} / ${picks.length}`, { ms: 60000 });
+    toast(`Suoristetaan valittuja… ${i + 1} / ${picks.length}`, { ms: 60000 });
     try {
       const a = await autoHorizon(f, { quiet: true });
       if (a === null) none++;
@@ -1318,7 +1319,7 @@ $('#horizon-picks').onclick = async () => {
       none++;
     }
   }
-  toast(`Levelled ${leveled} of ${picks.length} picks${none ? ` (${none} without a clear horizon)` : ''}`);
+  toast(`Suoristettu ${leveled}/${picks.length} valittua kuvaa${none ? ` (${none} ilman selvää horisonttia)` : ''}`);
 };
 
 // ---------------------------------------------------------------------------
@@ -1540,7 +1541,7 @@ window.addEventListener('keydown', (e) => {
     case 'A':
       S.autoAdvance = !S.autoAdvance;
       $('#auto-advance').checked = S.autoAdvance;
-      return toast(`Auto-advance ${S.autoAdvance ? 'on' : 'off'}`);
+      return toast(`Seuraavaan siirtyminen ${S.autoAdvance ? 'päällä' : 'pois'}`);
     case '?':
       return $('#dlg-help').showModal();
     case 'Escape':
@@ -1609,7 +1610,7 @@ async function openSetup() {
   const sample = cur() || S.frames[0];
   for (const k of ['home', 'away', 'league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords']) form.elements[k].value = g[k] || '';
   form.elements.template.value = g.template || DEFAULT_TEMPLATE;
-  form.elements.dateStyle.value = g.dateStyle || 'en-US';
+  form.elements.dateStyle.value = g.dateStyle || 'fi';
   const state = S.state || (await api('GET', '/state'));
   const setTeams = (extra = []) => $('#teams').replaceChildren(...[...new Set([...state.teams, ...extra])].sort((x, y) => x.localeCompare(y, 'fi')).map((t) => h('option', { value: t })));
   setTeams();
@@ -1619,7 +1620,7 @@ async function openSetup() {
   const rosterBox = (side) => form.elements[side === 'home' ? 'rosterHome' : 'rosterAway'];
   async function loadRoster(side) {
     const team = form.elements[side].value.trim();
-    $(`#roster-${side}-label`).textContent = team ? `${team} roster` : `${side === 'home' ? 'Home' : 'Away'} roster`;
+    $(`#roster-${side}-label`).textContent = team ? `${team}: kokoonpano` : `${side === 'home' ? 'Kotijoukkueen' : 'Vierasjoukkueen'} kokoonpano`;
     if (!team) return;
     const r = await api('GET', `/rosters/${encodeURIComponent(team)}`).catch(() => ({ players: [] }));
     known[team] = r.players;
@@ -1646,18 +1647,18 @@ async function openSetup() {
   form.elements.liigaDate.value = g.liigaDate || fmtDate(S.frames[0]?.t) || new Date().toISOString().slice(0, 10);
   async function findGames() {
     const date = form.elements.liigaDate.value;
-    gameSel.replaceChildren(h('option', { value: '', text: 'Looking for games…' }));
+    gameSel.replaceChildren(h('option', { value: '', text: 'Haetaan otteluita…' }));
     try {
       liigaGames = (await api('GET', `/liiga/games?date=${date}`)).games;
       gameSel.replaceChildren(
-        h('option', { value: '', text: liigaGames.length ? `${liigaGames.length} Liiga game(s) on ${date}: choose…` : `No Liiga games on ${date}` }),
+        h('option', { value: '', text: liigaGames.length ? `${liigaGames.length} Liiga-ottelua ${fiDate(date)}: valitse…` : `Ei Liiga-otteluita ${fiDate(date)}` }),
         ...liigaGames.map((x) => h('option', { value: `${x.season}/${x.id}`, text: `${x.home} – ${x.away} · ${String(x.start).slice(11, 16)} · ${x.arena}` })),
       );
       if (g.liigaGame && liigaGames.some((x) => `${x.season}/${x.id}` === g.liigaGame)) gameSel.value = g.liigaGame;
       status('');
       api('GET', `/liiga/teams?season=${seasonOf(date)}`).then((r) => setTeams(r.teams.map((x) => x.name))).catch(() => {});
     } catch (err) {
-      gameSel.replaceChildren(h('option', { value: '', text: 'Liiga not available' }));
+      gameSel.replaceChildren(h('option', { value: '', text: 'Liiga ei saatavilla' }));
       status(err.message, true);
     }
   }
@@ -1670,18 +1671,18 @@ async function openSetup() {
     form.elements.league.value = 'Liiga';
     form.elements.venue.value = chosen.arena;
     form.elements.city.value = chosen.city;
-    if (!form.elements.country.value) form.elements.country.value = 'Finland';
-    $('#roster-home-label').textContent = `${chosen.home} roster`;
-    $('#roster-away-label').textContent = `${chosen.away} roster`;
-    status('Loading lineups from liiga.fi…');
+    if (!form.elements.country.value) form.elements.country.value = 'Suomi';
+    $('#roster-home-label').textContent = `${chosen.home}: kokoonpano`;
+    $('#roster-away-label').textContent = `${chosen.away}: kokoonpano`;
+    status('Haetaan kokoonpanoja liiga.fi:stä…');
     try {
       const lu = await api('GET', `/liiga/game/${chosen.season}/${chosen.id}`);
       for (const [side, data] of [['home', lu.home], ['away', lu.away]]) {
         known[data.team] = data.players;
         rosterBox(side).value = rosterText(data.players);
       }
-      const what = (d) => `${d.team} ${d.players.length} players${d.source === 'season' ? ' (season roster: lineup not out yet)' : ''}`;
-      status(`From liiga.fi: ${what(lu.home)}, ${what(lu.away)}.`);
+      const what = (d) => `${d.team} ${d.players.length} pelaajaa${d.source === 'season' ? ' (kauden pelaajat: ottelun kokoonpanoa ei ole vielä julkaistu)' : ''}`;
+      status(`liiga.fi:stä: ${what(lu.home)}, ${what(lu.away)}.`);
     } catch (err) {
       status(err.message, true);
     }
@@ -1691,14 +1692,14 @@ async function openSetup() {
     btn.onclick = async () => {
       const side = btn.dataset.liigaRoster;
       const team = form.elements[side].value.trim();
-      if (!team) return status('Choose the team first.', true);
-      status(`Loading the ${team} roster from liiga.fi…`);
+      if (!team) return status('Valitse ensin joukkue.', true);
+      status(`Haetaan joukkueen ${team} pelaajia liiga.fi:stä…`);
       try {
         const { players } = await api('GET', `/liiga/roster?season=${seasonOf(form.elements.liigaDate.value)}&team=${encodeURIComponent(team)}`);
-        if (!players.length) return status(`liiga.fi has no roster for “${team}” this season.`, true);
+        if (!players.length) return status(`liiga.fi:ssä ei ole joukkueen “${team}” pelaajia tältä kaudelta.`, true);
         known[team] = players;
         rosterBox(side).value = rosterText(players);
-        status(`${team}: ${players.length} players from liiga.fi.`);
+        status(`${team}: ${players.length} pelaajaa liiga.fi:stä.`);
         preview();
       } catch (err) {
         status(err.message, true);
@@ -1745,10 +1746,10 @@ async function openSetup() {
       return h(
         'div',
         { class: 'cam-row' },
-        h('div', {}, h('b', { text: c.label }), h('div', { class: 'muted small', text: `${S.frames.filter((x) => x.cam === key).length} photos · first at ${f ? fmtTime(f.t, false) : '–'} (camera clock)` })),
-        h('input', { 'data-cam': key, 'data-kind': 'label', value: c.label, title: 'Name' }),
-        h('input', { 'data-cam': key, 'data-kind': 'offset', value: fmtOffset(c.offset), title: 'Clock fix, e.g. +2:05 (add 2 min 5 s) or -1:00:00', placeholder: '+0:00' }),
-        h('span', { class: 'muted small', text: 'clock fix' }),
+        h('div', {}, h('b', { text: c.label }), h('div', { class: 'muted small', text: `${S.frames.filter((x) => x.cam === key).length} kuvaa · ensimmäinen ${f ? fmtTime(f.t, false) : '–'} (kameran kello)` })),
+        h('input', { 'data-cam': key, 'data-kind': 'label', value: c.label, title: 'Nimi' }),
+        h('input', { 'data-cam': key, 'data-kind': 'offset', value: fmtOffset(c.offset), title: 'Kellon korjaus, esim. +2:05 (lisää 2 min 5 s) tai -1:00:00', placeholder: '+0:00' }),
+        h('span', { class: 'muted small', text: 'kellon korjaus' }),
       );
     }),
   );
@@ -1759,19 +1760,19 @@ async function openSetup() {
       h(
         'div',
         { class: 'src-row' },
-        h('div', {}, `💾 ${s.label}`, connected(s.id) ? '' : h('span', { class: 'badge off', text: ' not connected' })),
+        h('div', {}, `💾 ${s.label}`, connected(s.id) ? '' : h('span', { class: 'badge off', text: ' ei yhdistetty' })),
         isImmich()
           ? ''
           : h('button', {
               type: 'button',
-              text: connected(s.id) ? 'Rescan (new photos)' : 'Connect…',
+              text: connected(s.id) ? 'Lue uudelleen (uudet kuvat)' : 'Yhdistä…',
               onclick: async () => {
                 dlg.close();
                 if (!connected(s.id)) return $('#reconnect-btn').click();
                 const { frames } = await scanCards([S.cards.get(s.id)], s.id);
                 await api('POST', `/s/${S.sess.id}/frames`, { frames: frames.map((f) => ({ ...f, src: s.id })), cameras: camerasFor(frames, S.sess.cameras) });
                 await loadSession(S.sess.id, { keep: true });
-                toast(`${s.label} rescanned`);
+                toast(`${s.label} luettu uudelleen`);
               },
             }),
       ),
@@ -1783,7 +1784,7 @@ async function openSetup() {
           {},
           h('button', {
             type: 'button',
-            text: '+ Add a card (second camera)',
+            text: '+ Lisää kortti (toinen kamera)',
             onclick: async () => {
               const card = await pickCard().catch(fail);
               if (!card) return;
@@ -1821,7 +1822,7 @@ async function openSetup() {
       if (input.dataset.kind === 'label') c.label = input.value;
       else {
         const off = parseOffset(input.value);
-        if (off === null) toast(`Clock fix “${input.value}” not understood; use e.g. +2:05`, { error: true });
+        if (off === null) toast(`Kellon korjausta “${input.value}” ei ymmärretty; käytä esim. +2:05`, { error: true });
         else c.offset = off;
       }
     }
@@ -1862,7 +1863,7 @@ async function openExport() {
   form.elements.scope.value = ex.scope || 'picks';
   form.elements.longEdge.value = ex.longEdge ?? 2048;
   form.elements.quality.value = ex.quality ?? 90;
-  form.elements.pattern.value = ex.pattern || '{date}_{home}-{away}_{seq}';
+  form.elements.pattern.value = ex.pattern || DEFAULT_PATTERN;
   form.elements.folder.value = slug(gameTitle(S.sess.game, S.frames[0]?.t)) || 'RinkSide';
   form.elements.dest.value = ex.dest === 'immich' ? 'immich' : 'folder';
   form.elements.album.value = ex.album || (isImmich() ? S.sess.immichAlbum?.name : S.sess.sync?.albumName) || gameTitle(S.sess.game, S.frames[0]?.t);
@@ -1872,7 +1873,7 @@ async function openExport() {
   $('#zip-note').hidden = canWriteFolders();
   $('#export-folder-field').hidden = !hasFolderAccess;
   exportRoot ||= await loadHandle('export-root');
-  $('#export-folder').textContent = hasFolderAccess ? (exportRoot ? `📁 ${exportRoot.name}` : 'No folder chosen yet') : '';
+  $('#export-folder').textContent = hasFolderAccess ? (exportRoot ? `📁 ${exportRoot.name}` : 'Kansiota ei ole vielä valittu') : '';
   const refresh = () => {
     const toImmich = form.elements.dest.value === 'immich';
     $('#immich-dest').hidden = !toImmich;
@@ -1881,7 +1882,7 @@ async function openExport() {
     const f = S.frames.find((x) => x.flag === 1) || S.frames[0];
     $('#name-preview').textContent = f ? `${fileName(form.elements.pattern.value, f, S.sess.game, 1, camLabel(f))}.jpg` : '';
     const n = exportIds(form.elements.scope.value).length;
-    $('#export-go').textContent = `Export ${n} photo${n === 1 ? '' : 's'}`;
+    $('#export-go').textContent = `Vie ${n} kuva${n === 1 ? '' : 'a'}`;
     $('#export-go').disabled = !n || Boolean(exporting);
   };
   form.oninput = refresh;
@@ -1942,7 +1943,7 @@ $('#export-go').onclick = async () => {
       if (!window.__rinksideExportDir) {
         exportRoot = root;
         await saveHandle('export-root', root);
-        if (!(await writable(root))) return toast('RinkSide needs permission to write to that folder', { error: true });
+        if (!(await writable(root))) return toast('RinkSide tarvitsee luvan kirjoittaa kansioon', { error: true });
       }
       dir = await root.getDirectoryHandle(form.elements.folder.value.trim() || 'RinkSide', { create: true });
     } else zip = new Zip();
@@ -1967,14 +1968,14 @@ $('#export-go').onclick = async () => {
   let originals = 0;
   const errors = [];
   const t0 = performance.now();
-  const where = dir ? `${(window.__rinksideExportDir || exportRoot).name}/${dir.name}` : 'a ZIP';
+  const where = dir ? `${(window.__rinksideExportDir || exportRoot).name}/${dir.name}` : 'ZIP-tiedostoon';
   const render = () => {
     bar.style.width = `${(done / plan.length) * 100}%`;
-    msg.textContent = `${done} / ${plan.length} written to ${where}${errors.length ? ` · ${errors.length} failed` : ''}`;
+    msg.textContent = `${done} / ${plan.length} tallennettu: ${where}${errors.length ? ` · ${errors.length} epäonnistui` : ''}`;
   };
   render();
   const queue = [...plan];
-  const origDir = dir && options.originals && !isImmich() ? await dir.getDirectoryHandle('Originals', { create: true }) : null;
+  const origDir = dir && options.originals && !isImmich() ? await dir.getDirectoryHandle('Alkuperäiset', { create: true }) : null;
   const origTaken = new Set();
   const workers = Array.from({ length: Math.min(2, queue.length) }, () => new Worker(new URL('./export-worker.js', import.meta.url), { type: 'module' }));
   await Promise.all(
@@ -2013,7 +2014,7 @@ $('#export-go').onclick = async () => {
   exporting = null;
   bar.style.width = '100%';
   const secs = ((performance.now() - t0) / 1000).toFixed(1);
-  msg.textContent = `${job.cancelled ? 'Stopped. ' : ''}${done - errors.length} photo(s) exported to ${where} in ${secs} s${originals ? `, ${originals} original file(s) copied` : ''}${errors.length ? ` · ${errors.length} failed: ${errors.slice(0, 3).join('; ')}` : ''}`;
+  msg.textContent = `${job.cancelled ? 'Keskeytetty. ' : ''}${done - errors.length} kuvaa viety: ${where}, ${secs.replace('.', ',')} s${originals ? `, ${originals} alkuperäistä tiedostoa kopioitu` : ''}${errors.length ? ` · ${errors.length} epäonnistui: ${errors.slice(0, 3).join('; ')}` : ''}`;
   $('#export-go').disabled = false;
 };
 
@@ -2034,7 +2035,7 @@ async function exportToImmich(options, ids, prog, bar, msg) {
   const errors = [];
   const render = () => {
     bar.style.width = `${(done / items.length) * 100}%`;
-    msg.textContent = `${done} / ${items.length} sent to Immich${errors.length ? ` · ${errors.length} failed` : ''}`;
+    msg.textContent = `${done} / ${items.length} lähetetty Immichiin${errors.length ? ` · ${errors.length} epäonnistui` : ''}`;
   };
   render();
   const worker = new Worker(new URL('./export-worker.js', import.meta.url), { type: 'module' });
@@ -2068,7 +2069,7 @@ async function exportToImmich(options, ids, prog, bar, msg) {
   exporting = null;
   bar.style.width = '100%';
   const unchanged = done - uploaded - errors.length;
-  msg.textContent = `${job.cancelled ? 'Stopped. ' : ''}${uploaded} edit(s) sent to Immich, album “${ctx.albumName}”${unchanged ? `; ${unchanged} unchanged, skipped` : ''}${errors.length ? ` · ${errors.length} failed: ${errors.slice(0, 3).join('; ')}` : ''}`;
+  msg.textContent = `${job.cancelled ? 'Keskeytetty. ' : ''}${uploaded} muokattua kuvaa lähetetty Immichiin, albumi “${ctx.albumName}”${unchanged ? `; ${unchanged} muuttumatonta ohitettu` : ''}${errors.length ? ` · ${errors.length} epäonnistui: ${errors.slice(0, 3).join('; ')}` : ''}`;
   $('#export-go').disabled = false;
 }
 
@@ -2129,7 +2130,7 @@ async function openSync() {
   $('#sync-local').hidden = isImmich();
   const synced = Object.keys(S.sess.sync?.assets || {}).length;
   const who = S.state?.user?.name;
-  $('#sync-target').textContent = `To your Immich${who ? ` (${who})` : ''}${S.sess.sync?.last ? ` · last synced ${new Date(S.sess.sync.last).toLocaleString()} (${synced} photos)` : ''}`;
+  $('#sync-target').textContent = `Omaan Immichiisi${who ? ` (${who})` : ''}${S.sess.sync?.last ? ` · synkronoitu viimeksi ${new Date(S.sess.sync.last).toLocaleString('fi-FI')} (${synced} kuvaa)` : ''}`;
   $('#sync-progress').hidden = !syncStatus;
   $('#people').hidden = true;
   $('#people-go').hidden = !synced;
@@ -2171,29 +2172,29 @@ function renderSync(s) {
     s.state === 'running'
       ? `${s.step}${s.total ? ` ${s.done} / ${s.total}` : ''}${s.current ? ` · ${s.current}` : ''}`
       : s.state === 'done'
-        ? `Done: ${sum.uploaded} uploaded, ${sum.alreadyThere} already in Immich, ${sum.updated} captions/ratings updated${S.sess.sync.albumName ? ` · album “${S.sess.sync.albumName}”` : ''}.`
-        : `Stopped: ${s.message}`;
+        ? `Valmis: ${sum.uploaded} lähetetty, ${sum.alreadyThere} oli jo Immichissä, ${sum.updated} kuvatekstiä/arvostelua päivitetty${S.sess.sync.albumName ? ` · albumi “${S.sess.sync.albumName}”` : ''}.`
+        : `Keskeytyi: ${s.message}`;
   $('.errors', prog).replaceChildren(...s.errors.slice(0, 50).map((e) => h('li', { text: e })));
 }
 
 $('#people-go').onclick = async () => {
   const box = $('#people');
   box.hidden = false;
-  box.replaceChildren(h('p', { class: 'muted small', text: 'Looking at faces Immich found in the synced photos…' }));
+  box.replaceChildren(h('p', { class: 'muted small', text: 'Katsotaan kasvoja, jotka Immich löysi synkronoiduista kuvista…' }));
   try {
     const r = await suggestPeople(S.sess, S.rosters);
     if (!r.suggestions.length) {
-      box.replaceChildren(h('p', { class: 'muted small', text: `No suggestions from ${r.checked} captioned photos. Immich needs to finish face recognition first, and photos need players.` }));
+      box.replaceChildren(h('p', { class: 'muted small', text: `Ei ehdotuksia ${r.checked} kuvatekstitetystä kuvasta. Immichin pitää ensin saada kasvojentunnistus valmiiksi, ja kuvissa pitää olla pelaajat.` }));
       return;
     }
     box.replaceChildren(
-      h('p', { class: 'muted small', text: 'Tick the faces to name in Immich:' }),
+      h('p', { class: 'muted small', text: 'Rastita kasvot, jotka nimetään Immichissä:' }),
       ...r.suggestions.map((s) =>
         h(
           'label',
           { class: 'person' },
           h('img', { src: immichUrl(`/people/${s.personId}/thumbnail`), alt: '' }),
-          h('div', {}, h('b', { text: s.suggestion }), h('div', { class: 'muted small', text: `${s.currentName ? `now “${s.currentName}” · ` : ''}${s.photos} photos · ${Math.round(s.confidence * 100)}% sure` })),
+          h('div', {}, h('b', { text: s.suggestion }), h('div', { class: 'muted small', text: `${s.currentName ? `nyt “${s.currentName}” · ` : ''}${s.photos} kuvaa · ${Math.round(s.confidence * 100)} % varma` })),
           h('input', { type: 'checkbox', checked: s.confidence >= 0.75, dataset: { person: s.personId, name: s.suggestion } }),
         ),
       ),
@@ -2203,12 +2204,12 @@ $('#people-go').onclick = async () => {
         h('button', {
           type: 'button',
           class: 'primary',
-          text: 'Name the ticked people',
+          text: 'Nimeä rastitetut henkilöt',
           onclick: async () => {
             const names = $$('input[data-person]', box).filter((i) => i.checked);
             try {
               for (const i of names) await immich('PUT', `/people/${i.dataset.person}`, { body: { name: i.dataset.name } });
-              toast(`${names.length} people named in Immich`);
+              toast(`${names.length} henkilöä nimetty Immichissä`);
             } catch (err) {
               fail(err);
             }
@@ -2227,7 +2228,7 @@ $('#people-go').onclick = async () => {
 $('#open-album').onclick = async () => {
   const dlg = $('#dlg-albums');
   const list = $('#album-list');
-  list.replaceChildren(h('p', { class: 'muted', text: 'Loading albums…' }));
+  list.replaceChildren(h('p', { class: 'muted', text: 'Haetaan albumeja…' }));
   dlg.showModal();
   try {
     const albums = (await immich('GET', '/albums')).sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
@@ -2255,7 +2256,7 @@ $('#open-album').onclick = async () => {
                 },
               },
               h('span', { text: a.albumName }),
-              h('span', { class: 'muted small', text: `${a.assetCount} · ${fmtDate(Date.parse(a.startDate))}` }),
+              h('span', { class: 'muted small', text: `${a.assetCount} kuvaa · ${fmtDate(Date.parse(a.startDate))}` }),
             ),
           ),
       );
@@ -2275,7 +2276,7 @@ for (const d of $$('dialog')) d.addEventListener('close', () => d.contains(docum
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
-if (!renderer) toast('This browser has no WebGL 2, so the look preview is off. Use a current Edge or Chrome.', { error: true, ms: 10000 });
+if (!renderer) toast('Tässä selaimessa ei ole WebGL 2:ta, joten säätöjen esikatselu ei toimi. Käytä uutta Edgeä tai Chromea.', { error: true, ms: 10000 });
 const startId = new URLSearchParams(location.search).get('game');
 api('GET', '/state')
   .then((state) => {
