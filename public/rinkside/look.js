@@ -83,11 +83,18 @@ in vec2 v_uv;
 uniform sampler2D u_tex;
 uniform vec3 u_gain;
 uniform float u_exp, u_con, u_hi, u_sh, u_sat;
+uniform vec2 u_rot;      // straighten: cos, sin of the angle
+uniform float u_aspect;  // image width / height
 out vec4 outColor;
 vec3 toLin(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
 vec3 toSrgb(vec3 c) { c = clamp(c, 0.0, 1.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 void main() {
-  vec3 c = toLin(texture(u_tex, v_uv).rgb) * u_gain * exp2(u_exp);
+  // Straighten: sample the source turned back by the angle, around the image centre.
+  vec2 p = (v_uv - 0.5) * vec2(u_aspect, 1.0);
+  p = vec2(u_rot.x * p.x + u_rot.y * p.y, -u_rot.y * p.x + u_rot.x * p.y);
+  vec2 uv = p / vec2(u_aspect, 1.0) + 0.5;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) { outColor = vec4(0.07, 0.075, 0.09, 1.0); return; }
+  vec3 c = toLin(texture(u_tex, uv).rgb) * u_gain * exp2(u_exp);
   float L = dot(c, vec3(0.2126, 0.7152, 0.0722));
   float y = pow(clamp(L, 0.0, 1.0), 1.0 / 2.2);
   y += u_sh * 0.8 * y * (1.0 - y) * (1.0 - y);
@@ -119,7 +126,7 @@ export class Renderer {
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
     gl.useProgram(prog);
-    this.u = Object.fromEntries(['u_dst', 'u_src', 'u_gain', 'u_exp', 'u_con', 'u_hi', 'u_sh', 'u_sat', 'u_tex'].map((n) => [n, gl.getUniformLocation(prog, n)]));
+    this.u = Object.fromEntries(['u_dst', 'u_src', 'u_gain', 'u_exp', 'u_con', 'u_hi', 'u_sh', 'u_sat', 'u_tex', 'u_rot', 'u_aspect'].map((n) => [n, gl.getUniformLocation(prog, n)]));
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
@@ -147,7 +154,8 @@ export class Renderer {
   }
 
   // src: { x, y, w, h } in image pixels; dst: { x, y, w, h } in canvas pixels.
-  draw(look, src, dst, { background = [0.07, 0.075, 0.09] } = {}) {
+  // angle: straighten, in degrees (positive turns the photo clockwise).
+  draw(look, src, dst, { background = [0.07, 0.075, 0.09], angle = 0 } = {}) {
     const { gl, u } = this;
     const L = { ...LOOK_DEFAULTS, ...look };
     const cw = this.canvas.width;
@@ -165,6 +173,9 @@ export class Renderer {
     gl.uniform1f(u.u_sh, L.shadows / 100);
     gl.uniform1f(u.u_sat, L.saturation / 100);
     gl.uniform1i(u.u_tex, 0);
+    const a = ((angle || 0) * Math.PI) / 180;
+    gl.uniform2f(u.u_rot, Math.cos(a), Math.sin(a));
+    gl.uniform1f(u.u_aspect, this.w / this.h);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 }
@@ -233,4 +244,79 @@ export async function decode(blob, { crop = null, maxEdge = 0, quality = 'high' 
   const y = Math.round(c.y * H);
   const src = { x, y, w: Math.max(1, Math.min(W - x, Math.round(c.w * W))), h: Math.max(1, Math.min(H - y, Math.round(c.h * H))) };
   return { bitmap, src, full: info };
+}
+
+// ---- straightening ---------------------------------------------------------------------
+
+// Shrink a crop (normalized, in the straightened frame) around its centre until
+// it lies inside the photo turned by `angle` degrees. A = image width / height.
+export function fitCrop(crop, angle, A) {
+  const c = { x: 0, y: 0, w: 1, h: 1, ratio: 'free', ...crop, angle };
+  const t = (angle * Math.PI) / 180;
+  const [co, si] = [Math.cos(t), Math.sin(t)];
+  const inside = (x, y) => {
+    const px = (x - 0.5) * A;
+    const py = y - 0.5;
+    const sx = co * px + si * py;
+    const sy = -si * px + co * py;
+    return Math.abs(sx) <= A / 2 + 1e-9 && Math.abs(sy) <= 0.5 + 1e-9;
+  };
+  const fits = (k) => {
+    const w = c.w * k;
+    const h = c.h * k;
+    const x = c.x + (c.w - w) / 2;
+    const y = c.y + (c.h - h) / 2;
+    return [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].every(([px, py]) => inside(px, py)) && { x, y, w, h };
+  };
+  if (fits(1)) return c;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid;
+    else hi = mid;
+  }
+  return { ...c, ...fits(lo) };
+}
+
+// Find the tilt of the long straight lines in a rink (boards, kick plate, glass,
+// lines on the ice) and return the angle that makes them level, in degrees, or
+// null if there's no clear line. Uses a Hough transform limited to ±10°.
+export function detectTilt(img) {
+  const { width: W, height: H, data } = img;
+  const gray = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+  const pts = [];
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x;
+      const gx = gray[i - W + 1] + 2 * gray[i + 1] + gray[i + W + 1] - gray[i - W - 1] - 2 * gray[i - 1] - gray[i + W - 1];
+      const gy = gray[i + W - 1] + 2 * gray[i + W] + gray[i + W + 1] - gray[i - W - 1] - 2 * gray[i - W] - gray[i - W + 1];
+      // Only edges that are close to horizontal (gradient close to vertical).
+      if (Math.abs(gx) > Math.abs(gy) * 0.3) continue;
+      if (Math.abs(gy) < 40) continue;
+      pts.push(x, y);
+    }
+  }
+  if (pts.length < W * 0.5) return null;
+  const STEP = 0.1;
+  const N = Math.round(20 / STEP) + 1;
+  let best = { score: 0, a: 0 };
+  const bins = new Float32Array(H * 2 + W);
+  for (let k = 0; k < N; k++) {
+    const a = -10 + k * STEP;
+    const tan = Math.tan((a * Math.PI) / 180);
+    bins.fill(0);
+    const off = W;
+    for (let j = 0; j < pts.length; j += 2) bins[Math.round(pts[j + 1] - pts[j] * tan) + off] += 1;
+    let score = 0;
+    for (let b = 1; b < bins.length - 1; b++) {
+      const v = bins[b - 1] * 0.5 + bins[b] + bins[b + 1] * 0.5;
+      if (v > score) score = v;
+    }
+    if (score > best.score) best = { score, a };
+  }
+  // A real line runs across a good part of the photo.
+  if (best.score < W * 0.35) return null;
+  return Math.round(-best.a * 10) / 10 || 0;
 }

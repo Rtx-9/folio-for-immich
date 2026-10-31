@@ -11,12 +11,13 @@ import path from 'node:path';
 import { config } from './config.js';
 import { HttpError, readJson, sendJson } from './http.js';
 import { api as immichApi } from './immich.js';
+import * as liiga from './liiga.js';
 
 const ROOT = path.join(config.dataDir, 'rinkside');
 
 const LOOK_KEYS = ['exposure', 'temp', 'tint', 'contrast', 'highlights', 'shadows', 'saturation'];
-const GAME_FIELDS = ['home', 'away', 'league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle', 'date'];
-const REMEMBERED = ['league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle'];
+const GAME_FIELDS = ['home', 'away', 'league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle', 'date', 'tagPlayers', 'liigaGame', 'liigaDate'];
+const REMEMBERED = ['league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle', 'tagPlayers'];
 export const EXPORT_DEFAULTS = { longEdge: 2048, quality: 90, pattern: '{date}_{home}-{away}_{seq}', scope: 'picks', originals: false, folder: '', dest: 'folder', album: '', stack: true };
 export const SYNC_DEFAULTS = { scope: 'picks', includeRaw: true, favorite: true, pickTag: true, rejects: 'archive', caption: true, rating: true, tags: true, album: true, albumName: '' };
 
@@ -98,9 +99,15 @@ export function sanitizeLook(look) {
   if (!look || typeof look !== 'object') return null;
   return Object.fromEntries(LOOK_KEYS.map((k) => [k, Math.round(num(look[k], k === 'exposure' ? -5 : -100, k === 'exposure' ? 5 : 100) * 100) / 100]));
 }
+// A preset may set only some of the sliders.
+function sanitizePartialLook(look) {
+  const out = {};
+  for (const k of LOOK_KEYS) if (look && Number.isFinite(Number(look[k]))) out[k] = Math.round(num(look[k], k === 'exposure' ? -5 : -100, k === 'exposure' ? 5 : 100) * 100) / 100;
+  return out;
+}
 function sanitizeCrop(c) {
   if (!c || typeof c !== 'object') return null;
-  const crop = { x: num(c.x, 0, 1), y: num(c.y, 0, 1), w: num(c.w, 0, 1), h: num(c.h, 0, 1), ratio: str(c.ratio, 10) || 'free' };
+  const crop = { x: num(c.x, 0, 1), y: num(c.y, 0, 1), w: num(c.w, 0, 1), h: num(c.h, 0, 1), ratio: str(c.ratio, 10) || 'free', angle: Math.round(num(c.angle, -45, 45) * 100) / 100 };
   if (crop.w < 0.01 || crop.h < 0.01) return null;
   crop.w = Math.min(crop.w, 1 - crop.x);
   crop.h = Math.min(crop.h, 1 - crop.y);
@@ -281,7 +288,7 @@ export async function rinksideApi(req, res, url, p, auth) {
       .map(summary)
       .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
     const settings = load(settingsFile, {});
-    return sendJson(res, 200, { user, sessions, teams: Object.keys(load(rostersFile, {})).sort((a, b) => a.localeCompare(b)), settings: { exportFolder: settings.exportFolder || '' } });
+    return sendJson(res, 200, { user, sessions, teams: Object.keys(load(rostersFile, {})).sort((a, b) => a.localeCompare(b)), settings: { exportFolder: settings.exportFolder || '' }, presets: settings.lookPresets || [] });
   }
 
   if (p === '/settings' && method === 'PUT') {
@@ -292,6 +299,26 @@ export async function rinksideApi(req, res, url, p, auth) {
     return sendJson(res, 200, { ok: true });
   }
 
+  // Your own look presets.
+  if (p === '/presets' && method === 'PUT') {
+    const body = await readJson(req);
+    const s = load(settingsFile, {});
+    s.lookPresets = (Array.isArray(body.presets) ? body.presets : []).slice(0, 100).map((x) => ({ name: str(x.name, 60) || 'Preset', look: sanitizePartialLook(x.look) })).filter((x) => Object.keys(x.look).length);
+    saveLater(settingsFile, s);
+    return sendJson(res, 200, { presets: s.lookPresets });
+  }
+
+  // Liiga: games by date, lineups, rosters and player photos.
+  if (p === '/liiga/games' && method === 'GET') return sendJson(res, 200, { games: await liiga.gamesOn(url.searchParams.get('date') || '') });
+  if (p === '/liiga/teams' && method === 'GET') return sendJson(res, 200, { teams: await liiga.teams(Number(url.searchParams.get('season')) || liiga.seasonOf(new Date().toISOString().slice(0, 10))) });
+  if ((m = p.match(/^\/liiga\/game\/(\d{4})\/(\d+)$/)) && method === 'GET') return sendJson(res, 200, await liiga.lineup(Number(m[1]), m[2]));
+  if (p === '/liiga/roster' && method === 'GET') return sendJson(res, 200, { players: await liiga.roster(Number(url.searchParams.get('season')), url.searchParams.get('team') || '') });
+  if (p === '/liiga/photo' && method === 'GET') {
+    const buf = await liiga.photo(url.searchParams.get('u') || '');
+    res.writeHead(200, { 'content-type': 'image/png', 'content-length': buf.length, 'cache-control': 'private, max-age=2592000, immutable' });
+    return res.end(buf);
+  }
+
   if ((m = p.match(/^\/rosters\/(.+)$/))) {
     const team = decodeURIComponent(m[1]).trim().slice(0, 100);
     if (!team) throw new HttpError(400, 'Team name missing');
@@ -299,7 +326,10 @@ export async function rinksideApi(req, res, url, p, auth) {
     if (method === 'GET') return sendJson(res, 200, { team, players: all[team] || [] });
     if (method === 'PUT') {
       const { players } = await readJson(req);
-      all[team] = (Array.isArray(players) ? players : []).slice(0, 200).map((x) => ({ num: str(String(x.num), 3), name: str(x.name, 100) })).filter((x) => x.num && x.name);
+      all[team] = (Array.isArray(players) ? players : [])
+        .slice(0, 200)
+        .map((x) => ({ num: str(String(x.num), 3), name: str(x.name, 100), ...(typeof x.photo === 'string' && /^https?:\/\//.test(x.photo) && { photo: x.photo.slice(0, 500) }), ...(x.pos && { pos: str(x.pos, 10) }) }))
+        .filter((x) => x.num && x.name);
       saveLater(rostersFile, all);
       return sendJson(res, 200, { team, players: all[team] });
     }

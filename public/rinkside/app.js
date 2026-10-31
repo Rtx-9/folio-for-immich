@@ -4,7 +4,7 @@
 import { albumAssets, api, editSignature, exportEdit, framesFromAssets, immich, immichUrl, runSync, suggestPeople } from './backend.js';
 import { captionFor, DEFAULT_TEMPLATE, fileName, gameTitle, parsePlayers, parseRoster, rosterText, slug, TOKENS } from './caption.js';
 import { Card, freeName, hasFolderAccess, loadHandle, pickCard, pickExportFolder, saveHandle, writable, writeFile, Zip } from './card.js';
-import { decode, iceColor, isNeutral, LOOK_DEFAULTS, neutralize, Renderer, sampleAt } from './look.js';
+import { decode, detectTilt, fitCrop, iceColor, isNeutral, LOOK_DEFAULTS, neutralize, Renderer, sampleAt } from './look.js';
 import { cameraLabel, exifFromDetails, frameMeta, fullBlob, scanFiles, sourceExif, tagJpeg, thumbBlob, xmpPacket } from './media.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -62,7 +62,7 @@ const S = {
   before: false,
   picking: false,
   cropEdit: null,
-  tab: 'caption',
+  tab: 'players',
   clipboard: null,
   undo: [],
   cards: new Map(), // source id → Card (this browser's access to that card)
@@ -257,6 +257,7 @@ async function openGame(id, { setup = false, keepCards = false } = {}) {
   S.cards = cards;
   S.sess = { id, frames: [], cameras: {}, game: {}, look: { ...LOOK_DEFAULTS }, sources: [] };
   await loadSession(id);
+  renderPresets();
   if (!isImmich()) await connectCards(false);
   if (setup || (!S.sess.game.home && S.frames.length)) openSetup();
 }
@@ -517,10 +518,14 @@ async function show({ skim = false } = {}) {
     return preload();
   }
   // Show the small preview at once; the full photo replaces it when decoded.
+  // (Same photo with a new crop or angle: keep showing it while the sharper one decodes.)
   const skimImg = $('#skim');
-  skimImg.hidden = false;
-  skimImg.removeAttribute('src');
-  thumbSrc(f).then((u) => token === showToken && (skimImg.src = u)).catch(() => {});
+  if (disp?.id === f.id && !skim) draw();
+  else {
+    skimImg.hidden = false;
+    skimImg.removeAttribute('src');
+    thumbSrc(f).then((u) => token === showToken && (skimImg.src = u)).catch(() => {});
+  }
   if (skim) return;
   try {
     const d = await load(f, { crop: editing ? null : f.crop });
@@ -571,13 +576,17 @@ function draw() {
     return;
   }
   $('#zoom-label').hidden = true;
-  const src = disp.src;
+  // The crop and straighten angle come from the photo (or the crop being edited).
+  const crop = S.cropEdit ? null : f.crop;
+  const [W, H] = [disp.bitmap.width, disp.bitmap.height];
+  const src = crop ? { x: crop.x * W, y: crop.y * H, w: Math.max(1, crop.w * W), h: Math.max(1, crop.h * H) } : { x: 0, y: 0, w: W, h: H };
+  const angle = (S.cropEdit ? S.cropEdit.angle : f.crop?.angle) || 0;
   const margin = S.cropEdit ? 40 * stageSize().dpr : 0;
   const scale = Math.min((cw - margin * 2) / src.w, (ch - margin * 2) / src.h);
   lastSrc = src;
   lastDst = { x: (cw - src.w * scale) / 2, y: (ch - src.h * scale) / 2, w: src.w * scale, h: src.h * scale };
   renderer.setImage(disp.bitmap);
-  renderer.draw(look, lastSrc, lastDst);
+  renderer.draw(look, lastSrc, lastDst, { angle });
 }
 
 async function loadZoom(f) {
@@ -688,14 +697,23 @@ function updateChrome() {
   renderPanel();
 }
 
+const tagging = () => S.sess?.game?.tagPlayers !== 'off';
+
 function renderPanel() {
   const f = cur();
+  // With player tagging off there's no Players tab and no players field.
+  $('#panel-tabs [data-tab=players]').hidden = !tagging();
+  $('#players-field').hidden = !tagging();
+  $('#player-chips').hidden = !tagging();
+  $('#same-players').hidden = !tagging();
+  if (S.tab === 'players' && !tagging()) S.tab = 'caption';
   for (const t of $$('#panel-tabs button')) t.classList.toggle('on', t.dataset.tab === S.tab);
   for (const t of $$('#panel .tab')) t.hidden = t.dataset.tab !== S.tab;
   if (!f) return;
   if (document.activeElement !== $('#players')) $('#players').value = f.players || '';
   if (document.activeElement !== $('#custom-caption')) $('#custom-caption').value = f.caption || '';
   renderCaption();
+  renderPlayers();
   renderLookPanel();
   renderCropPanel();
   const ex = f.ex || {};
@@ -720,6 +738,65 @@ function renderCaption() {
   $('#player-chips').replaceChildren(...players.map((p) => h('span', { class: `chip ${p.side}${p.known ? '' : ' unknown'}`, title: p.known ? '' : 'Not in the roster', text: `${p.side === 'away' ? 'a' : ''}#${p.num} ${p.known ? p.name : '?'}${p.team ? ` · ${p.team}` : ''}` })));
   $('#caption-preview').textContent = captionFor({ ...f, players: $('#players').value, caption: $('#custom-caption').value || null }, S.sess.game, S.rosters) || '—';
 }
+
+// ---------------------------------------------------------------------------
+// Players tab: click the players in the photo
+// ---------------------------------------------------------------------------
+const photoUrl = (p) => (p.photo ? `/_folio/api/rinkside/liiga/photo?u=${encodeURIComponent(p.photo)}` : null);
+const playerKey = (side, num) => `${side === 'away' ? 'a' : ''}${Number(num)}`;
+
+function renderPlayers() {
+  const f = cur();
+  if (!f || !tagging() || S.tab !== 'players') return;
+  const game = S.sess.game;
+  const chosen = new Set(parsePlayers(f.players, game, S.rosters).map((p) => playerKey(p.side, p.num)));
+  $('#players-caption').textContent = captionFor(f, game, S.rosters) || '—';
+  const sections = [];
+  for (const side of ['home', 'away']) {
+    const team = game[side];
+    if (!team) continue;
+    const roster = S.rosters[team] || [];
+    sections.push(
+      h('div', { class: 'team-head' }, h('span', { text: `${team}${side === 'away' ? ' (away)' : ''}` })),
+      roster.length
+        ? h(
+            'div',
+            { class: 'player-tiles' },
+            ...roster.map((p) => {
+              const on = chosen.has(playerKey(side, p.num));
+              const url = photoUrl(p);
+              return h(
+                'button',
+                { type: 'button', class: `ptile${on ? ' on' : ''}`, title: `${p.num} ${p.name}${p.pos ? ` · ${p.pos}` : ''}`, onclick: () => togglePlayer(side, p.num), dataset: { key: playerKey(side, p.num) } },
+                url ? h('img', { class: 'face', src: url, alt: '', loading: 'lazy' }) : h('span', { class: 'noface', text: p.num }),
+                h('span', { class: 'num', text: p.num }),
+                h('span', { class: 'pname', text: p.name.split(' ').slice(-1)[0] }),
+                p.pos ? h('span', { class: 'ppos', text: p.pos }) : '',
+              );
+            }),
+          )
+        : h('p', { class: 'muted small', text: 'No roster yet: add it in Game setup, or choose the Liiga game there.' }),
+    );
+  }
+  if (!sections.length) sections.push(h('p', { class: 'muted small', text: 'Choose the teams in Game setup to see their players here.' }));
+  $('#player-grid').replaceChildren(...sections);
+}
+
+// Add or remove one player in the photo's "23 a12" list.
+function togglePlayer(side, num) {
+  const f = cur();
+  if (!f) return;
+  const key = playerKey(side, num);
+  const tokens = String(f.players || '').split(/[\s,;+]+/).filter(Boolean);
+  const norm = (t) => {
+    const m = /^([ha])?#?(\d{1,3})$/i.exec(t);
+    return m ? `${m[1]?.toLowerCase() === 'a' ? 'a' : ''}${Number(m[2])}` : t;
+  };
+  const next = tokens.some((t) => norm(t) === key) ? tokens.filter((t) => norm(t) !== key) : [...tokens, key];
+  setFrames([f.id], { players: next.join(' ') });
+}
+$('#players-clear').onclick = () => cur() && setFrames([cur().id], { players: '' });
+$('#players-same').onclick = () => samePlayers();
 
 // ---------------------------------------------------------------------------
 // Updating photos (with undo)
@@ -857,6 +934,71 @@ function renderLookPanel() {
   }
 }
 
+// Presets: a few built in, plus your own (saved in Folio for your account).
+// Built-in presets leave white balance alone, so the ice stays neutral.
+const BUILTIN_PRESETS = [
+  { name: 'Neutral', look: { exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0 } },
+  { name: 'Arena punch', look: { contrast: 25, highlights: -20, shadows: 15, saturation: 15 } },
+  { name: 'Bright ice', look: { exposure: 0.4, contrast: 10, highlights: -30, shadows: 10 } },
+  { name: 'Crisp & cool', look: { contrast: 20, highlights: -15, saturation: -5, tint: -3 } },
+  { name: 'Warm & rich', look: { contrast: 15, shadows: 10, saturation: 25 } },
+  { name: 'Flat (for editing later)', look: { contrast: -25, highlights: -40, shadows: 40, saturation: -10 } },
+  { name: 'Black & white', look: { contrast: 30, highlights: -10, saturation: -100 } },
+];
+const userPresets = () => S.state?.presets || [];
+
+function renderPresets() {
+  const sel = $('#preset-select');
+  const mine = userPresets();
+  sel.replaceChildren(
+    h('option', { value: '', text: 'Presets…' }),
+    h('optgroup', { label: 'Built in' }, ...BUILTIN_PRESETS.map((p, i) => h('option', { value: `b${i}`, text: p.name }))),
+    ...(mine.length ? [h('optgroup', { label: 'Yours' }, ...mine.map((p, i) => h('option', { value: `u${i}`, text: p.name })))] : []),
+  );
+  $('#preset-delete').disabled = true;
+}
+const presetFor = (v) => (v?.[0] === 'b' ? BUILTIN_PRESETS[Number(v.slice(1))] : v?.[0] === 'u' ? userPresets()[Number(v.slice(1))] : null);
+
+// Applies to the whole game, or to this photo if it has its own look (like the sliders).
+function applyPreset(preset) {
+  if (!preset) return;
+  setLook({ ...preset.look });
+  toast(`Preset “${preset.name}” applied${cur()?.look ? ' to this photo' : ' to the whole game'}`);
+}
+$('#preset-select').onchange = (e) => {
+  const v = e.target.value;
+  $('#preset-delete').disabled = v[0] !== 'u';
+  applyPreset(presetFor(v));
+};
+$('#preset-save').onclick = async () => {
+  const name = prompt('Name for this preset:')?.trim();
+  if (!name) return;
+  const look = { ...effectiveLook(cur()) };
+  if (!$('#preset-wb').checked) {
+    delete look.temp;
+    delete look.tint;
+  }
+  try {
+    const { presets } = await api('PUT', '/presets', { presets: [...userPresets().filter((p) => p.name !== name), { name, look }] });
+    S.state.presets = presets;
+    renderPresets();
+    toast(`Preset “${name}” saved`);
+  } catch (err) {
+    fail(err);
+  }
+};
+$('#preset-delete').onclick = async () => {
+  const p = presetFor($('#preset-select').value);
+  if (!p || !userPresets().includes(p) || !confirm(`Delete the preset “${p.name}”?`)) return;
+  try {
+    const { presets } = await api('PUT', '/presets', { presets: userPresets().filter((x) => x !== p) });
+    S.state.presets = presets;
+    renderPresets();
+  } catch (err) {
+    fail(err);
+  }
+};
+
 let lookTimer;
 function setLook(change, { live = false } = {}) {
   const f = cur();
@@ -959,6 +1101,9 @@ function renderCropPanel() {
   const ratio = S.cropEdit?.ratio || cur()?.crop?.ratio || 'free';
   $('#ratios').replaceChildren(...RATIOS.map(([key, label]) => h('button', { class: ratio === key || ROTATED[ratio] === key ? 'on' : '', onclick: () => setRatio(key) }, label)));
   $('#crop-edit').textContent = S.cropEdit ? 'Apply (Enter)' : 'Crop (C)';
+  const angle = (S.cropEdit ? S.cropEdit.angle : cur()?.crop?.angle) || 0;
+  if (document.activeElement !== $('#straighten')) $('#straighten').value = angle;
+  $('#straighten-out').textContent = `${angle > 0 ? '+' : ''}${angle.toFixed(1)}°`;
 }
 
 function startCrop() {
@@ -998,6 +1143,7 @@ function setRatio(key) {
     c.x = Math.min(1 - w, Math.max(0, cx - w / 2));
     c.y = Math.min(1 - hh, Math.max(0, cy - hh / 2));
   }
+  if (c.angle) Object.assign(c, fitCrop(c, c.angle, imageAspect()));
   placeCropBox();
   renderCropPanel();
 }
@@ -1057,6 +1203,11 @@ $('#crop-box').addEventListener('mousedown', (e) => {
   const up = () => {
     window.removeEventListener('mousemove', move);
     window.removeEventListener('mouseup', up);
+    // A straightened photo has empty corners: keep the box inside it.
+    if (c.angle) {
+      Object.assign(c, fitCrop(c, c.angle, A));
+      placeCropBox();
+    }
   };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
@@ -1068,9 +1219,9 @@ function applyCrop() {
   S.cropEdit = null;
   $('#crop-layer').hidden = true;
   if (!f || !c) return show();
-  const whole = c.x < 0.001 && c.y < 0.001 && c.w > 0.999 && c.h > 0.999;
+  const whole = c.x < 0.001 && c.y < 0.001 && c.w > 0.999 && c.h > 0.999 && !c.angle;
   disp = null;
-  setFrames([f.id], { crop: whole ? null : { x: c.x, y: c.y, w: c.w, h: c.h, ratio: c.ratio } });
+  setFrames([f.id], { crop: whole ? null : { x: c.x, y: c.y, w: c.w, h: c.h, ratio: c.ratio === 'level' && !c.angle ? 'free' : c.ratio, angle: c.angle || 0 } });
 }
 function cancelCrop() {
   S.cropEdit = null;
@@ -1085,6 +1236,89 @@ $('#crop-clear').onclick = () => {
   $('#crop-layer').hidden = true;
   disp = null;
   if (cur()) setFrames([cur().id], { crop: null });
+};
+
+// ---------------------------------------------------------------------------
+// Straighten and automatic horizon
+// ---------------------------------------------------------------------------
+const aspectOf = (f) => (f.o >= 5 ? f.h / f.w : f.w / f.h);
+
+// The crop for a photo turned by `angle`. A crop made only by straightening
+// ("level") is recalculated from the whole photo; your own crop is kept and
+// only shrunk if a corner would fall outside.
+function straightened(f, angle, base = f.crop) {
+  const A = aspectOf(f);
+  if (!angle && (!base || base.ratio === 'level')) return null;
+  const rect = !base || base.ratio === 'level' ? { x: 0, y: 0, w: 1, h: 1, ratio: 'level' } : base;
+  return fitCrop(rect, Math.round(angle * 10) / 10, A);
+}
+
+function setAngle(angle, { live = false } = {}) {
+  const f = cur();
+  if (!f) return;
+  if (S.cropEdit) {
+    S.cropEdit.angle = angle;
+    Object.assign(S.cropEdit, fitCrop(S.cropEdit, angle, imageAspect()));
+    placeCropBox();
+    renderCropPanel();
+    return draw();
+  }
+  if (live) {
+    S.liveBase ??= f.crop;
+    f.crop = straightened(f, angle, S.liveBase);
+    renderCropPanel();
+    return draw();
+  }
+  const crop = straightened(f, angle, S.liveBase !== undefined ? S.liveBase : f.crop);
+  if (S.liveBase !== undefined) f.crop = S.liveBase;
+  S.liveBase = undefined;
+  setFrames([f.id], { crop });
+}
+$('#straighten').oninput = (e) => setAngle(Number(e.target.value), { live: true });
+$('#straighten').onchange = (e) => setAngle(Number(e.target.value));
+$('label[for=straighten]').ondblclick = () => setAngle(0);
+
+// Level a photo from the boards and lines in it. Returns the angle, or null.
+async function autoHorizon(f = cur(), { quiet = false } = {}) {
+  if (!f) return null;
+  let bitmap;
+  let own = false;
+  if (disp?.id === f.id) bitmap = disp.bitmap;
+  else {
+    bitmap = (await decode(await fullOf(f), { maxEdge: 800, quality: 'medium' })).bitmap;
+    own = true;
+  }
+  const k = Math.min(1, 640 / Math.max(bitmap.width, bitmap.height));
+  const c = new OffscreenCanvas(Math.round(bitmap.width * k), Math.round(bitmap.height * k));
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0, c.width, c.height);
+  if (own) bitmap.close();
+  const angle = detectTilt(ctx.getImageData(0, 0, c.width, c.height));
+  if (angle === null) {
+    if (!quiet) toast('No clear horizon found (no long straight lines) — use the Straighten slider', { error: true });
+    return null;
+  }
+  setFrames([f.id], { crop: straightened(f, angle) });
+  if (!quiet) toast(angle ? `Straightened by ${angle > 0 ? '+' : ''}${angle.toFixed(1)}°` : 'Already level');
+  return angle;
+}
+$('#horizon-auto').onclick = () => autoHorizon().catch(fail);
+$('#horizon-picks').onclick = async () => {
+  const picks = S.frames.filter((f) => f.flag === 1);
+  if (!picks.length) return toast('No picks yet');
+  let leveled = 0;
+  let none = 0;
+  for (const [i, f] of picks.entries()) {
+    toast(`Levelling picks… ${i + 1} / ${picks.length}`, { ms: 60000 });
+    try {
+      const a = await autoHorizon(f, { quiet: true });
+      if (a === null) none++;
+      else leveled++;
+    } catch {
+      none++;
+    }
+  }
+  toast(`Levelled ${leveled} of ${picks.length} picks${none ? ` (${none} without a clear horizon)` : ''}`);
 };
 
 // ---------------------------------------------------------------------------
@@ -1291,6 +1525,9 @@ window.addEventListener('keydown', (e) => {
     case 'c':
     case 'C':
       return startCrop();
+    case 'h':
+    case 'H':
+      return void autoHorizon().catch(fail);
     case 'w':
       return startPick();
     case 'W':
@@ -1369,26 +1606,113 @@ async function openSetup() {
   const dlg = $('#dlg-setup');
   const form = $('#setup-form');
   const g = S.sess.game;
+  const sample = cur() || S.frames[0];
   for (const k of ['home', 'away', 'league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords']) form.elements[k].value = g[k] || '';
   form.elements.template.value = g.template || DEFAULT_TEMPLATE;
   form.elements.dateStyle.value = g.dateStyle || 'en-US';
   const state = S.state || (await api('GET', '/state'));
-  $('#teams').replaceChildren(...state.teams.map((t) => h('option', { value: t })));
+  const setTeams = (extra = []) => $('#teams').replaceChildren(...[...new Set([...state.teams, ...extra])].sort((x, y) => x.localeCompare(y, 'fi')).map((t) => h('option', { value: t })));
+  setTeams();
+  // Players with photos and positions, by team (from saved rosters or Liiga), so
+  // they survive editing the roster text.
+  const known = {};
+  const rosterBox = (side) => form.elements[side === 'home' ? 'rosterHome' : 'rosterAway'];
   async function loadRoster(side) {
     const team = form.elements[side].value.trim();
     $(`#roster-${side}-label`).textContent = team ? `${team} roster` : `${side === 'home' ? 'Home' : 'Away'} roster`;
     if (!team) return;
     const r = await api('GET', `/rosters/${encodeURIComponent(team)}`).catch(() => ({ players: [] }));
-    form.elements[side === 'home' ? 'rosterHome' : 'rosterAway'].value = rosterText(r.players);
+    known[team] = r.players;
+    rosterBox(side).value = rosterText(r.players);
     preview();
   }
+
+  // Liiga: pick the game, get teams, arena and both lineups.
+  const tagBox = form.elements.tagPlayers;
+  tagBox.checked = g.tagPlayers !== 'off';
+  const showRosters = () => {
+    $('#rosters').hidden = !tagBox.checked;
+    $('#rosters-head').hidden = !tagBox.checked;
+  };
+  tagBox.onchange = () => (showRosters(), preview());
+  showRosters();
+  const seasonOf = (date) => (Number(date.slice(5, 7)) >= 7 ? Number(date.slice(0, 4)) + 1 : Number(date.slice(0, 4)));
+  const status = (msg, error = false) => {
+    $('#liiga-status').textContent = msg;
+    $('#liiga-status').style.color = error ? '#ffb3b3' : '';
+  };
+  const gameSel = $('#liiga-games');
+  let liigaGames = [];
+  form.elements.liigaDate.value = g.liigaDate || fmtDate(S.frames[0]?.t) || new Date().toISOString().slice(0, 10);
+  async function findGames() {
+    const date = form.elements.liigaDate.value;
+    gameSel.replaceChildren(h('option', { value: '', text: 'Looking for games…' }));
+    try {
+      liigaGames = (await api('GET', `/liiga/games?date=${date}`)).games;
+      gameSel.replaceChildren(
+        h('option', { value: '', text: liigaGames.length ? `${liigaGames.length} Liiga game(s) on ${date}: choose…` : `No Liiga games on ${date}` }),
+        ...liigaGames.map((x) => h('option', { value: `${x.season}/${x.id}`, text: `${x.home} – ${x.away} · ${String(x.start).slice(11, 16)} · ${x.arena}` })),
+      );
+      if (g.liigaGame && liigaGames.some((x) => `${x.season}/${x.id}` === g.liigaGame)) gameSel.value = g.liigaGame;
+      status('');
+      api('GET', `/liiga/teams?season=${seasonOf(date)}`).then((r) => setTeams(r.teams.map((x) => x.name))).catch(() => {});
+    } catch (err) {
+      gameSel.replaceChildren(h('option', { value: '', text: 'Liiga not available' }));
+      status(err.message, true);
+    }
+  }
+  form.elements.liigaDate.onchange = findGames;
+  gameSel.onchange = async () => {
+    const chosen = liigaGames.find((x) => `${x.season}/${x.id}` === gameSel.value);
+    if (!chosen) return;
+    form.elements.home.value = chosen.home;
+    form.elements.away.value = chosen.away;
+    form.elements.league.value = 'Liiga';
+    form.elements.venue.value = chosen.arena;
+    form.elements.city.value = chosen.city;
+    if (!form.elements.country.value) form.elements.country.value = 'Finland';
+    $('#roster-home-label').textContent = `${chosen.home} roster`;
+    $('#roster-away-label').textContent = `${chosen.away} roster`;
+    status('Loading lineups from liiga.fi…');
+    try {
+      const lu = await api('GET', `/liiga/game/${chosen.season}/${chosen.id}`);
+      for (const [side, data] of [['home', lu.home], ['away', lu.away]]) {
+        known[data.team] = data.players;
+        rosterBox(side).value = rosterText(data.players);
+      }
+      const what = (d) => `${d.team} ${d.players.length} players${d.source === 'season' ? ' (season roster: lineup not out yet)' : ''}`;
+      status(`From liiga.fi: ${what(lu.home)}, ${what(lu.away)}.`);
+    } catch (err) {
+      status(err.message, true);
+    }
+    preview();
+  };
+  for (const btn of $$('[data-liiga-roster]', form)) {
+    btn.onclick = async () => {
+      const side = btn.dataset.liigaRoster;
+      const team = form.elements[side].value.trim();
+      if (!team) return status('Choose the team first.', true);
+      status(`Loading the ${team} roster from liiga.fi…`);
+      try {
+        const { players } = await api('GET', `/liiga/roster?season=${seasonOf(form.elements.liigaDate.value)}&team=${encodeURIComponent(team)}`);
+        if (!players.length) return status(`liiga.fi has no roster for “${team}” this season.`, true);
+        known[team] = players;
+        rosterBox(side).value = rosterText(players);
+        status(`${team}: ${players.length} players from liiga.fi.`);
+        preview();
+      } catch (err) {
+        status(err.message, true);
+      }
+    };
+  }
+  findGames();
   form.elements.home.onchange = () => loadRoster('home');
   form.elements.away.onchange = () => loadRoster('away');
   await Promise.all([loadRoster('home'), loadRoster('away')]);
 
-  const sample = cur() || S.frames[0];
   function preview() {
     const game = Object.fromEntries(['home', 'away', 'league', 'venue', 'city', 'country', 'byline', 'template', 'dateStyle'].map((k) => [k, form.elements[k].value]));
+    game.tagPlayers = form.elements.tagPlayers.checked ? 'on' : 'off';
     const rosters = { [game.home]: parseRoster(form.elements.rosterHome.value), [game.away]: parseRoster(form.elements.rosterAway.value) };
     const home = rosters[game.home][0];
     const away = rosters[game.away]?.[0];
@@ -1482,6 +1806,15 @@ async function openSetup() {
   dlg.onclose = async () => {
     if (dlg.returnValue !== 'save') return;
     const game = Object.fromEntries(['home', 'away', 'league', 'venue', 'city', 'country', 'byline', 'credit', 'copyright', 'keywords', 'template', 'dateStyle'].map((k) => [k, form.elements[k].value.trim()]));
+    game.tagPlayers = tagBox.checked ? 'on' : 'off';
+    game.liigaGame = gameSel.value || '';
+    game.liigaDate = form.elements.liigaDate.value;
+    // Keep player photos and positions for the names that are still in the roster.
+    const withPhotos = (team, text) =>
+      parseRoster(text).map((p) => {
+        const k = (known[team] || []).find((x) => x.num === p.num && x.name === p.name) || (known[team] || []).find((x) => x.num === p.num);
+        return { ...p, ...(k?.photo && { photo: k.photo }), ...(k?.pos && { pos: k.pos }) };
+      });
     const cameras = {};
     for (const input of $$('#cameras input')) {
       const c = (cameras[input.dataset.cam] ??= {});
@@ -1493,8 +1826,8 @@ async function openSetup() {
       }
     }
     try {
-      if (game.home) await api('PUT', `/rosters/${encodeURIComponent(game.home)}`, { players: parseRoster(form.elements.rosterHome.value) });
-      if (game.away) await api('PUT', `/rosters/${encodeURIComponent(game.away)}`, { players: parseRoster(form.elements.rosterAway.value) });
+      if (game.home) await api('PUT', `/rosters/${encodeURIComponent(game.home)}`, { players: withPhotos(game.home, form.elements.rosterHome.value) });
+      if (game.away) await api('PUT', `/rosters/${encodeURIComponent(game.away)}`, { players: withPhotos(game.away, form.elements.rosterAway.value) });
       await api('PATCH', `/s/${S.sess.id}`, { game, cameras });
       S.state = await api('GET', '/state');
       await loadSession(S.sess.id, { keep: true });
@@ -1654,7 +1987,7 @@ $('#export-go').onclick = async () => {
           const res = await new Promise((resolve) => {
             w.onmessage = (e) => resolve(e.data);
             w.onerror = (e) => resolve({ ok: false, error: e.message });
-            w.postMessage({ id: f.id, blob, crop: f.crop, look: isNeutral(look) ? null : look, longEdge: options.longEdge, quality: options.quality });
+            w.postMessage({ id: f.id, blob, crop: f.crop, angle: f.crop?.angle || 0, look: isNeutral(look) ? null : look, longEdge: options.longEdge, quality: options.quality });
           });
           if (!res.ok) throw new Error(res.error);
           const meta = frameMeta(S.sess, f, S.rosters);
@@ -1717,7 +2050,7 @@ async function exportToImmich(options, ids, prog, bar, msg) {
           const res = await new Promise((resolve) => {
             worker.onmessage = (e) => resolve(e.data);
             worker.onerror = (e) => resolve({ ok: false, error: e.message });
-            worker.postMessage({ id: f.id, blob, crop: f.crop, look, longEdge: options.longEdge, quality: options.quality });
+            worker.postMessage({ id: f.id, blob, crop: f.crop, angle: f.crop?.angle || 0, look, longEdge: options.longEdge, quality: options.quality });
           });
           if (!res.ok) throw new Error(res.error);
           return tagJpeg(new Uint8Array(res.jpeg), { exif: await sourceExifFor(f), width: res.width, height: res.height, meta: frameMeta(S.sess, f, S.rosters) });
@@ -1952,4 +2285,4 @@ api('GET', '/state')
   .catch(() => showHome());
 
 // For the automated tests.
-window.rinkside = { S, go, flag, stars, setLook, autoWhite, setMode, toggleZoom, startCrop, applyCrop, setRatio, rotateCrop, cur, draw, connectCards, get disp() { return disp; } };
+window.rinkside = { S, go, flag, stars, setLook, autoWhite, setMode, toggleZoom, startCrop, applyCrop, setRatio, rotateCrop, cur, draw, connectCards, get disp() { return disp; }, get view() { return lastDst; } };

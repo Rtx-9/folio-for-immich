@@ -7,7 +7,7 @@ let renderer;
 let canvas;
 
 self.onmessage = async (e) => {
-  const { id, blob, crop, look, longEdge, quality } = e.data;
+  const { id, blob, crop, angle, look, longEdge, quality } = e.data;
   try {
     const { bitmap, src } = await decode(blob, { crop, maxEdge: longEdge || 0, quality: 'high' });
     canvas ||= new OffscreenCanvas(src.w, src.h);
@@ -15,7 +15,7 @@ self.onmessage = async (e) => {
     canvas.height = src.h;
     renderer ||= new Renderer(canvas);
     renderer.setImage(bitmap);
-    renderer.draw(look, src, { x: 0, y: 0, w: src.w, h: src.h });
+    renderer.draw(look, src, { x: 0, y: 0, w: src.w, h: src.h }, { angle });
     const jpeg = await canvas.convertToBlob({ type: 'image/jpeg', quality: Math.max(0.3, Math.min(1, quality / 100)) });
     renderer.image = null;
     bitmap.close();

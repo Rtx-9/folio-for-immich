@@ -69,12 +69,19 @@
       </main>
       <aside id="panel">
         <div class="tabs" id="panel-tabs">
-          <button data-tab="caption" class="on">Caption</button>
+          <button data-tab="players" class="on">Players</button>
+          <button data-tab="caption">Caption</button>
           <button data-tab="look">Look</button>
           <button data-tab="crop">Crop</button>
         </div>
-        <div class="tab" data-tab="caption">
-          <label class="field">Players <small>Enter</small>
+        <div class="tab" data-tab="players">
+          <div class="caption-preview small" id="players-caption"></div>
+          <p class="muted small">Click the players in the photo. Click again to remove.</p>
+          <div id="player-grid"></div>
+          <div class="row small"><button id="players-clear">Clear players</button><button id="players-same" title="Same players as the previous photo (=)">= Same as previous</button></div>
+        </div>
+        <div class="tab" data-tab="caption" hidden>
+          <label class="field" id="players-field">Players <small>Enter</small>
             <input id="players" autocomplete="off" spellcheck="false" placeholder="23 a12  (home 23, away 12)">
           </label>
           <div id="player-chips" class="chips"></div>
@@ -94,6 +101,12 @@
             <button id="scope-photo" title="This photo gets its own look">This photo</button>
           </div>
           <div id="look-note" class="note"></div>
+          <div class="row small presets">
+            <select id="preset-select" title="Presets"></select>
+            <button id="preset-save" title="Save the current sliders as a preset">Save…</button>
+            <button id="preset-delete" title="Delete this preset">Delete</button>
+          </div>
+          <label class="check small"><input type="checkbox" id="preset-wb"> Saving includes white balance</label>
           <div id="sliders"></div>
           <div class="row small">
             <button id="wb-pick" title="Click the ice to set white balance (W)">⌖ Pick ice</button>
@@ -108,6 +121,11 @@
           <p class="muted small">Hold <kbd>\</kbd> to see the photo without the look.</p>
         </div>
         <div class="tab" data-tab="crop" hidden>
+          <div class="slider straighten"><label for="straighten" title="Double-click to reset">Straighten</label><input type="range" id="straighten" min="-15" max="15" step="0.1" value="0"><output id="straighten-out">0°</output></div>
+          <div class="row small">
+            <button id="horizon-auto" title="Level the photo from the boards and lines (H)">Auto horizon (H)</button>
+            <button id="horizon-picks" title="Level every pick">Auto horizon for all picks</button>
+          </div>
           <div class="ratios" id="ratios"></div>
           <div class="row small">
             <button id="crop-edit" class="primary" title="C">Crop (C)</button>
@@ -136,6 +154,15 @@
   <dialog id="dlg-setup" class="dlg wide">
     <form method="dialog" id="setup-form">
       <h2>Game setup</h2>
+      <div class="liiga">
+        <h3>Liiga game <small class="muted">fills in the teams, arena and both lineups with player photos</small></h3>
+        <div class="row">
+          <input type="date" name="liigaDate" class="date">
+          <select id="liiga-games"><option value="">Choose the game…</option></select>
+        </div>
+        <div id="liiga-status" class="muted small"></div>
+      </div>
+      <label class="check"><input type="checkbox" name="tagPlayers"> Tag players in photos (names in captions, keywords and Immich tags)</label>
       <div class="grid2">
         <label class="field">Home team <input name="home" list="teams" autocomplete="off" required></label>
         <label class="field">Away team <input name="away" list="teams" autocomplete="off"></label>
@@ -148,10 +175,10 @@
         <label class="field span2">Copyright <input name="copyright" placeholder="© 2026 Your Name"></label>
         <label class="field span2">Keywords <small>comma separated, added to every photo</small><input name="keywords" placeholder="ice hockey, jääkiekko"></label>
       </div>
-      <h3>Rosters <small class="muted">one player per line, “23 Matti Virtanen”. Remembered per team.</small></h3>
-      <div class="grid2">
-        <label class="field"><span id="roster-home-label">Home roster</span><textarea name="rosterHome" rows="8" spellcheck="false"></textarea></label>
-        <label class="field"><span id="roster-away-label">Away roster</span><textarea name="rosterAway" rows="8" spellcheck="false"></textarea></label>
+      <h3 id="rosters-head">Rosters <small class="muted">one player per line, “23 Matti Virtanen”. Remembered per team.</small></h3>
+      <div class="grid2" id="rosters">
+        <div class="field"><span id="roster-home-label">Home roster</span><textarea name="rosterHome" rows="8" spellcheck="false"></textarea><button type="button" class="small" data-liiga-roster="home">Load from Liiga</button></div>
+        <div class="field"><span id="roster-away-label">Away roster</span><textarea name="rosterAway" rows="8" spellcheck="false"></textarea><button type="button" class="small" data-liiga-roster="away">Load from Liiga</button></div>
       </div>
       <h3>Caption</h3>
       <label class="field">Template <textarea name="template" rows="2" spellcheck="false"></textarea></label>
@@ -289,6 +316,7 @@
           <p><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> copy / paste look · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> to all picks</p>
           <p><kbd>\</kbd> before / after</p>
           <p><kbd>C</kbd> crop · <kbd>R</kbd> rotate box · <kbd>Enter</kbd> apply · <kbd>Esc</kbd> cancel</p>
+          <p><kbd>H</kbd> auto horizon</p>
           <p><kbd>Ctrl</kbd>+<kbd>E</kbd> export · <kbd>?</kbd> this help</p>
         </div>
       </div>

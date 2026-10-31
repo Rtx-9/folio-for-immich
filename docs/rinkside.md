@@ -50,6 +50,23 @@ Folio already sits in front of Immich on the same address, so RinkSide is a page
     recorded as RinkSide edits in your games, with `force: false`, so originals can't be
     deleted this way, and nothing is ever deleted permanently.
 
+- **Liiga data** comes from liiga.fi's public API, fetched and cached by Folio, because
+  liiga.fi doesn't let a browser call it directly:
+  - `/api/v2/games?tournament=…&season=…` for games by date, with teams, arena and city;
+  - `/api/v2/games/{season}/{id}` for both lineups, with jersey numbers, positions and
+    photo links (players marked as removed are left out);
+  - `/api/v2/players/stats/summed/…` for season rosters, used before a lineup is out.
+
+  Player photos are only fetched from Liiga's own storage and are cached in
+  `FOLIO_DATA/rinkside/liiga`. Liiga seasons are named by the year they end (autumn 2026
+  is season 2027). For tests, `LIIGA_URL` and `LIIGA_PHOTO_PREFIX` point to a fake.
+- **Automatic horizon** runs in the browser:
+  - a Sobel filter keeps edges that are nearly horizontal, and a Hough transform within
+    ±10° finds the angle of the longest straight lines (boards, kick plate, glass, lines
+    on the ice);
+  - the photo is turned on the GPU, and the crop is shrunk until no corner falls outside;
+  - if no line runs across at least a third of the photo, nothing is changed.
+
 A plugin that captions photos on upload was considered as a server-side extra. It isn't
 needed, because RinkSide's sync already writes the finished caption into every photo it
 uploads. It would also need the external-plugin flag and an Immich build environment.

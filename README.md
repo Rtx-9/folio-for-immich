@@ -49,12 +49,23 @@ address (the `https://` one).
 - **Several bodies, one timeline.** NEF+JPG pairs are matched, and NEF-only shots work
   too. Cameras are merged by capture time down to the hundredth of a second, with a
   clock fix per camera. Both bodies' `DSC_0001` files stay apart.
-- **Captions from jersey numbers.** Paste each roster once (`23 Matti Virtanen`); it's
-  remembered per team. On a photo, type `23 a12` (home 23, away 12) and the template
-  writes the caption. Photo Mechanic codes like `\23\` and `\a12\` work in custom captions.
+- **Liiga games in one click.** In Game setup, choose the game from the photos' day.
+  RinkSide fills in both teams, the arena and the city, and loads both lineups from
+  liiga.fi with jersey numbers, positions and player photos. Before a lineup is out, it
+  uses the season roster. Other leagues work too: type the teams and paste the rosters.
+- **Tap the players.** The **Players** tab shows each team's players with their photos
+  and numbers. Click the ones in the photo and the caption, keywords and Immich tags
+  follow. Typing `23 a12` (home 23, away 12) still works, and so do Photo Mechanic codes
+  like `\23\` and `\a12\` in custom captions. Rosters are remembered per team. If you
+  don't want player names at all, switch off **Tag players** in Game setup.
 - **Look and crop.** White balance from the ice (click it, or automatic), exposure,
   contrast, highlights, shadows, saturation. A look covers the whole game or one photo,
-  and can be pasted to all picks. Crop offers free, 3:2, 4:5, 16:9, 1:1 and 9:16.
+  and can be pasted to all picks. There are **presets**: Arena punch, Bright ice, Black
+  & white and more, plus your own, saved to your account. Crop offers free, 3:2, 4:5,
+  16:9, 1:1 and 9:16.
+- **Automatic horizon.** Press `H` and RinkSide levels the photo from the boards, glass
+  and lines on the ice, trimming the edges so no corners are empty. There's also a
+  **Straighten** slider, and **Auto horizon for all picks**.
 - **Export** writes resized JPEGs to a folder you choose. The camera EXIF is kept, and
   caption, byline, copyright, keywords and date go in as **IPTC and XMP**, for Photo
   Mechanic, Lightroom and wire services. It can also copy the picked NEF+JPG files with
@@ -84,10 +95,12 @@ the card after a reload.
 
 1. Click **Open a card…** and choose the card; use **Add another card** for a second
    body. Then click **Start culling**.
-2. In **Game setup**, fill in the teams, league, arena, byline and copyright, and paste
-   both rosters. Under **Cameras**, a body whose clock was off gets a fix like `+2:05`.
-3. Cull with `→`, `P`, `X` and `1`–`5`. Caption with `Enter`, then `23 a12`, then
-   `Shift+Enter`. Press `Shift+W` on a photo with lots of ice to set the white balance.
+2. In **Game setup**, choose the **Liiga game** (or type the teams and paste the
+   rosters), then add your byline and copyright. Under **Cameras**, a body whose clock
+   was off gets a fix like `+2:05`.
+3. Cull with `→`, `P`, `X` and `1`–`5`. Click the players in the **Players** tab (or type
+   `23 a12`). Press `Shift+W` on a photo with lots of ice to set the white balance, and
+   `H` to level a crooked one.
 4. Use **Export** (`Ctrl+E`) for the agency, or choose **Send to: Immich** for the edited
    versions. Use **Sync** to put the originals in Immich.
 
@@ -104,6 +117,7 @@ the card after a reload.
 | `Ctrl+C` / `Ctrl+V` / `Ctrl+Shift+V` | copy / paste look / paste to all picks |
 | `\` (hold) | before / after |
 | `C`, `R`, `Enter`, `Esc` | crop, rotate box, apply, cancel |
+| `H` | automatic horizon |
 | `A`, `Ctrl+Z`, `Ctrl+E`, `?` | auto-advance, undo, export, all shortcuts |
 
 Firefox and Safari can't keep access to a card or write to a folder. They pick the card

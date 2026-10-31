@@ -22,11 +22,11 @@ const Z = {
 };
 const D3 = { card: 'D3', folder: 'DCIM/100ND3__', make: 'NIKON CORPORATION', model: 'NIKON D3', w: 4256, h: 2832, raw: [4288, 2848], lens: '', clock: -125 };
 
-// [camera, number, true local time (s after 18:31:00), files, orientation, players]
+// [camera, number, true local time (s after 18:31:00), files, orientation, players, tilt°]
 const SHOTS = [
   [Z, 1, 5.1, 'both', 1, [[23, HOME], [12, AWAY]]],
   [Z, 2, 5.3, 'both', 1, [[23, HOME], [12, AWAY]]],
-  [Z, 3, 5.5, 'both', 1, [[23, HOME]]],
+  [Z, 3, 5.5, 'both', 1, [[23, HOME]], 2.5],
   [Z, 4, 61, 'both', 8, [[7, HOME]]],
   [Z, 5, 140.25, 'nef', 1, [[12, AWAY], [4, AWAY]]],
   [Z, 6, 600, 'jpg', 1, [[31, HOME]]],
@@ -114,10 +114,10 @@ function stamp(cam, sec) {
   return { dt: `${t.getUTCFullYear()}:${pad(t.getUTCMonth() + 1)}:${pad(t.getUTCDate())} ${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:${pad(t.getUTCSeconds())}`, sub };
 }
 
-const plan = SHOTS.map(([cam, n, sec, files, orientation, players]) => {
+const plan = SHOTS.map(([cam, n, sec, files, orientation, players, tilt = 0]) => {
   const name = `DSC_${pad(n, 4)}`;
   const label = `${cam.card} ${name}`;
-  const base = { players, label, orientation, cast: cam === Z ? [192, 212, 240] : [214, 214, 200] };
+  const base = { players, label, orientation, tilt, cast: cam === Z ? [192, 212, 240] : [214, 214, 200] };
   return {
     cam, name, sec, files, orientation,
     full: pix(`${cam.card}-${name}-full.jpg`, { ...base, w: cam.w, h: cam.h, quality: 88 }),

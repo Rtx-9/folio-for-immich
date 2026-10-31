@@ -25,6 +25,8 @@ const lookup = (roster, num) => roster?.find((p) => p.num === String(Number(num)
 // "23 a12 h7" → home #23, away #12, home #7. Unknown numbers stay as "#23".
 export function parsePlayers(code, game = {}, rosters = {}) {
   const out = [];
+  // Player tagging switched off for this game: no names anywhere.
+  if (game.tagPlayers === 'off') return out;
   for (const tok of String(code || '').split(/[\s,;+]+/)) {
     const m = /^([ha])?#?(\d{1,3})$/i.exec(tok);
     if (!m) continue;

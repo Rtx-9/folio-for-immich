@@ -91,6 +91,28 @@ function upsertTag(value) {
   return tag;
 }
 
+const LIIGA_GAME = {
+  id: 2709999,
+  season: 2027,
+  start: '2026-10-29T16:30:00Z',
+  ended: true,
+  homeTeam: { teamName: 'HIFK', gameStartDateTime: '2026-10-29T18:30:00+02:00', logos: { darkBg: null } },
+  awayTeam: { teamName: 'Tappara', gameStartDateTime: '2026-10-29T18:30:00+02:00', logos: { darkBg: null } },
+  iceRink: { name: 'Helsinki Ice Hall I', city: 'HELSINKI' },
+};
+const OTHER_GAME = { ...LIIGA_GAME, id: 2709998, homeTeam: { ...LIIGA_GAME.homeTeam, teamName: 'Kärpät' }, awayTeam: { ...LIIGA_GAME.awayTeam, teamName: 'Lukko' }, iceRink: { name: 'Oulun Energia Areena', city: 'OULU' } };
+const liigaPlayer = (team, jersey, first, last, role, extra = {}) => ({ teamName: team, jersey, firstName: first, lastName: last, roleCode: role, pictureUrl: `http://localhost:${PORT}/liiga-photos/${jersey}.png`, removed: false, ...extra });
+const HOME_LINEUP = [liigaPlayer('HIFK', 23, 'Matti', 'Virtanen', 'KH'), liigaPlayer('HIFK', 7, 'Aku', 'Ankka', 'OP'), liigaPlayer('HIFK', 31, 'Kalle', 'Kiekko', 'MV'), liigaPlayer('HIFK', 10, 'Teemu', 'Testi', 'VL'), liigaPlayer('HIFK', 99, 'Not', 'Dressed', 'VL', { removed: true })];
+const AWAY_LINEUP = [liigaPlayer('Tappara', 12, 'Joni', 'Ikonen', 'KH'), liigaPlayer('Tappara', 4, 'Ville', 'Varis', 'VP'), liigaPlayer('Tappara', 88, 'Pekka', 'Puck', 'OL')];
+function liiga(req, res, url) {
+  db.log.push(`LIIGA ${url.pathname}${url.search}`);
+  const p = url.pathname.replace('/liiga/api/v2', '');
+  if (p === '/games') return send(res, 200, url.searchParams.get('tournament') === 'runkosarja' && url.searchParams.get('season') === '2027' ? [LIIGA_GAME, OTHER_GAME] : []);
+  if (p === `/games/2027/${LIIGA_GAME.id}`) return send(res, 200, { game: LIIGA_GAME, homeTeamPlayers: HOME_LINEUP, awayTeamPlayers: AWAY_LINEUP });
+  if (p === '/players/stats/summed/2027/2027/runkosarja/true') return send(res, 200, [...HOME_LINEUP, ...AWAY_LINEUP, liigaPlayer('Kärpät', 5, 'Oskari', 'Oulu', 'OP')]);
+  return send(res, 404, { message: 'no such Liiga path' });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
@@ -110,6 +132,9 @@ const server = http.createServer(async (req, res) => {
       auth: db.auth,
     });
   }
+  // A tiny liiga.fi: one game day with lineups and player photos.
+  if (p.startsWith('/liiga/')) return liiga(req, res, url);
+  if ((m = p.match(/^\/liiga-photos\/(\d+)\.png$/))) return send(res, 200, sampleJpeg(), 'image/png');
   if (!p.startsWith('/api/')) return send(res, 404, { message: 'Not found' });
   const cookie = /(?:^|;\s*)immich_access_token=([^;]+)/.exec(req.headers.cookie || '')?.[1];
   if (req.headers['x-api-key'] !== KEY && cookie !== KEY) return send(res, 401, { message: 'Invalid user token' });

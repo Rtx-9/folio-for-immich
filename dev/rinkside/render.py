@@ -49,6 +49,9 @@ def main():
         w, h = job["w"], job["h"]
         portrait = job.get("orientation", 1) in (6, 8)
         img = scene(h, w, job) if portrait else scene(w, h, job)
+        if job.get("tilt"):
+            # A crooked camera: the scene turned counter-clockwise by `tilt` degrees.
+            img = img.rotate(job["tilt"], resample=Image.BICUBIC, expand=False, fillcolor=(20, 20, 25))
         if job.get("orientation") == 6:
             img = img.rotate(90, expand=True)  # stored = upright turned left
         elif job.get("orientation") == 8:

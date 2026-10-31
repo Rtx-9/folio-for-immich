@@ -188,3 +188,26 @@ button.chip { cursor: pointer; }
 .row.center { justify-content: center; }
 .row.tight { margin: 2px 0; }
 #signed-out a { color: var(--accent); }
+
+/* ---------- players, presets, straighten, Liiga ---------- */
+#panel { padding-left: 12px; padding-right: 12px; }
+.team-head { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; font-weight: 650; font-size: 13px; }
+.team-head img { width: 22px; height: 22px; object-fit: contain; }
+.player-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.ptile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 2px 4px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); cursor: pointer; min-width: 0; }
+.ptile:hover { border-color: #4a5160; }
+.ptile.on { border-color: var(--accent); background: #2d2a12; }
+.ptile .face { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; object-position: top; background: var(--bg3); }
+.ptile .noface { width: 48px; height: 48px; border-radius: 50%; background: var(--bg3); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--muted); }
+.ptile .num { position: absolute; top: 3px; left: 4px; font-size: 12px; font-weight: 800; background: #000a; border-radius: 6px; padding: 0 4px; }
+.ptile .pname { font-size: 10.5px; line-height: 1.15; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.ptile .ppos { font-size: 9.5px; color: var(--muted); }
+.presets { margin-top: 2px; }
+.presets select { flex: 1; min-width: 0; padding: 5px 7px; }
+.check.small { font-size: 12px; margin: 2px 0 6px; color: var(--muted); }
+.straighten { grid-template-columns: 82px 1fr 46px; }
+.liiga { border: 1px solid var(--line); border-radius: 8px; padding: 2px 12px 8px; margin: 8px 0; background: var(--bg); }
+.liiga h3 { margin-top: 10px; }
+.liiga select { flex: 1; min-width: 0; }
+.liiga input.date { width: 160px; }
+button.small { padding: 4px 9px; font-size: 12px; align-self: flex-start; }

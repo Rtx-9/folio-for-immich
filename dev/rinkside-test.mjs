@@ -69,7 +69,7 @@ const start = (args, env = {}) => {
   return p;
 };
 let mock = start(['dev/rinkside/mock-immich-v3.mjs', String(MOCK)]);
-start(['src/server.js'], { IMMICH_URL: `http://localhost:${MOCK}`, PORT: String(PORT), FOLIO_DATA: path.join(tmp, 'folio-data') });
+start(['src/server.js'], { IMMICH_URL: `http://localhost:${MOCK}`, PORT: String(PORT), FOLIO_DATA: path.join(tmp, 'folio-data'), LIIGA_URL: `http://localhost:${MOCK}/liiga/api/v2`, LIIGA_PHOTO_PREFIX: `http://localhost:${MOCK}/liiga-photos/` });
 const waitUp = async (url) => {
   for (let i = 0; i < 80; i++) {
     try {
@@ -114,6 +114,7 @@ try {
   await page.wait(`window.rinkside && rinkside.S.sess && rinkside.S.frames.length && document.querySelector('#dlg-setup').open`, 30000);
   const sid = await page.eval('rinkside.S.sess.id');
   let sess = (await api('GET', `/s/${sid}`)).data;
+  const byNameFresh = (data, cam, name) => data.frames.find((f) => f.name === name && data.cameras[f.cam].label === cam);
   const byName = (cam, name) => sess.frames.find((f) => f.name === name && sess.cameras[f.cam].label === cam);
   check('25 files on two cards become 14 frames', sess.frames.length === 14, sess.frames.length);
   check('NEF+JPG pairs are joined; NEF-only frames kept', sess.frames.filter((f) => f.jpg && f.nef).length === 11 && sess.frames.filter((f) => f.nef && !f.jpg).length === 2);
@@ -125,19 +126,27 @@ try {
 
   // -------------------------------------------------------------- game setup (through the dialog)
   const d3Key = Object.keys(sess.cameras).find((k) => sess.cameras[k].label === 'D3');
+  console.log('Liiga game (fake liiga.fi)');
+  await page.wait(`document.querySelector('#liiga-games').options.length === 3`, 15000);
+  check('the Liiga games of the photos’ day are listed', (await page.eval(`[...document.querySelector('#liiga-games').options].map((o) => o.text).join('|')`)).includes('HIFK – Tappara · 18:30 · Helsinki Ice Hall'));
+  await page.eval(`(() => { const s = document.querySelector('#liiga-games'); s.value = '2027/2709999'; s.dispatchEvent(new Event('change')); })()`);
+  await page.wait(`/From liiga.fi/.test(document.querySelector('#liiga-status').textContent)`);
+  if (shots) await page.screenshot(path.join(shots, '0-liiga.png'));
+  const filled = await page.eval(`(() => { const f = document.querySelector('#setup-form').elements; return { home: f.home.value, away: f.away.value, league: f.league.value, venue: f.venue.value, city: f.city.value, country: f.country.value, rh: f.rosterHome.value, ra: f.rosterAway.value }; })()`);
+  check('choosing the game fills teams, league, arena and city', filled.home === 'HIFK' && filled.away === 'Tappara' && filled.league === 'Liiga' && filled.venue === 'Helsinki Ice Hall' && filled.city === 'Helsinki' && filled.country === 'Finland', filled);
+  check('both lineups come in (players marked removed left out)', filled.rh.split('\n').length === 4 && filled.rh.startsWith('7 Aku Ankka') && !/Dressed/.test(filled.rh) && filled.ra.split('\n').length === 3, filled);
   await page.eval(`(() => {
     const f = document.querySelector('#setup-form');
     const set = (k, v) => { f.elements[k].value = v; f.elements[k].dispatchEvent(new Event('input', { bubbles: true })); };
-    set('home', 'HIFK'); set('away', 'Tappara'); set('league', 'Liiga'); set('venue', 'Helsinki Ice Hall'); set('city', 'Helsinki'); set('country', 'Finland');
     set('byline', 'Test Shooter'); set('credit', 'RinkSide Test'); set('copyright', '© 2026 Test Shooter'); set('keywords', 'ice hockey, jääkiekko');
-    set('rosterHome', '23 Matti Virtanen\\n7 Aku Ankka\\n31 Kalle Kiekko\\n10 Teemu Testi');
-    set('rosterAway', '12 Joni Ikonen\\n4 Ville Varis\\n88 Pekka Puck');
     document.querySelector('#cameras input[data-cam=${JSON.stringify(d3Key)}][data-kind=offset]').value = '+2:05';
   })()`);
   check('the template example updates as you type', /during the Liiga game between HIFK and Tappara/.test(await page.eval(`document.querySelector('#template-preview').textContent`)));
   await page.eval(`document.querySelector('#setup-form button[value=save]').click()`);
   await page.wait(`rinkside.S.sess.game.home === 'HIFK' && rinkside.S.rosters.HIFK?.length === 4`);
-  check('rosters are remembered per team', (await api('GET', '/rosters/Tappara')).data.players.length === 3);
+  const savedRoster = (await api('GET', '/rosters/Tappara')).data.players;
+  check('rosters are remembered per team, with player photos', savedRoster.length === 3 && savedRoster.every((x) => x.photo?.includes('/liiga-photos/') && x.pos));
+  check('the game remembers which Liiga game it is', (await api('GET', `/s/${sid}`)).data.game.liigaGame === '2027/2709999');
 
   // -------------------------------------------------------------- culling
   console.log('Culling (keyboard)');
@@ -210,6 +219,85 @@ try {
   await page.eval('[...document.querySelectorAll("#filters button")].find((b) => b.textContent.startsWith("All")).click()');
 
   // -------------------------------------------------------------- look and crop
+  // -------------------------------------------------------------- Players tab
+  console.log('Players tab');
+  await goTo('D3', 'DSC_0005');
+  await page.eval('document.querySelector("#panel-tabs [data-tab=players]").click()');
+  await page.wait('document.querySelectorAll("#player-grid .ptile").length === 7');
+  await page.wait('[...document.querySelectorAll("#player-grid .ptile img")].every((i) => i.complete && i.naturalWidth > 0)', 15000);
+  check('player tiles show photos and numbers for both teams', (await page.eval('[...document.querySelectorAll("#player-grid .ptile .num")].map((n) => n.textContent).join(",")')) === '7,10,23,31,4,12,88');
+  const tile = (key) => page.eval(`document.querySelector('#player-grid .ptile[data-key="${key}"]').click()`);
+  await tile('23');
+  await page.wait('rinkside.cur().players === "23" && document.querySelector("#player-grid .ptile[data-key=\'23\']").classList.contains("on")');
+  await tile('a88');
+  await page.wait('rinkside.cur().players === "23 a88"');
+  if (shots) await page.screenshot(path.join(shots, '0-players.png'));
+  check('clicking players writes them into the photo', /^Matti Virtanen \(HIFK\) and Pekka Puck \(Tappara\) during/.test(await page.eval('document.querySelector("#players-caption").textContent')));
+  await tile('23');
+  await page.wait('rinkside.cur().players === "a88"');
+  check('clicking again removes a player', true);
+  await sleep(400);
+  check('players from the tiles are saved', byNameFresh((await api('GET', `/s/${sid}`)).data, 'D3', 'DSC_0005').players === 'a88');
+
+  // Player tagging off: no Players tab and no names in captions.
+  await page.eval('document.querySelector("#btn-setup").click()');
+  await page.wait('document.querySelector("#dlg-setup").open').catch((err) => {
+    console.log(page.logs.slice(-10));
+    throw err;
+  });
+  await page.eval(`(() => { const f = document.querySelector('#setup-form'); f.elements.tagPlayers.checked = false; f.elements.tagPlayers.dispatchEvent(new Event('change')); document.querySelector('#setup-form button[value=save]').click(); })()`);
+  await page.wait('rinkside.S.sess.game.tagPlayers === "off"');
+  check('with player tagging off, the Players tab and names are gone', (await page.eval('document.querySelector("#panel-tabs [data-tab=players]").hidden && document.querySelector("#players-field").hidden')) && !/Pekka Puck/.test(await page.eval('document.querySelector("#caption-preview").textContent')));
+  await page.eval('document.querySelector("#btn-setup").click()');
+  await page.wait('document.querySelector("#dlg-setup").open');
+  await page.eval(`(() => { const f = document.querySelector('#setup-form'); f.elements.tagPlayers.checked = true; document.querySelector('#setup-form button[value=save]').click(); })()`);
+  await page.wait('rinkside.S.sess.game.tagPlayers === "on" && !document.querySelector("#panel-tabs [data-tab=players]").hidden');
+
+  // -------------------------------------------------------------- presets
+  console.log('Presets');
+  await page.eval('document.querySelector("#panel-tabs [data-tab=look]").click()');
+  await page.eval('document.querySelector("#scope-photo").click()');
+  await page.eval(`(() => { const s = document.querySelector('#preset-select'); s.value = 'b6'; s.dispatchEvent(new Event('change')); })()`);
+  const bw = await page.eval('rinkside.cur().look');
+  check('a built-in preset applies to the photo (Black & white)', bw.saturation === -100 && bw.contrast === 30);
+  await page.eval(`window.prompt = () => 'My arena'; window.confirm = () => true; rinkside.setLook({ exposure: 0.3 }); document.querySelector('#preset-save').click();`);
+  await page.wait('rinkside.S.state.presets.some((p) => p.name === "My arena")');
+  const savedPresets = (await api('GET', '/state')).data.presets;
+  check('your own preset is saved to your account (without white balance)', savedPresets.length === 1 && savedPresets[0].look.exposure === 0.3 && !('temp' in savedPresets[0].look));
+  await page.eval(`(() => { const s = document.querySelector('#preset-select'); s.value = 'u0'; s.dispatchEvent(new Event('change')); document.querySelector('#preset-delete').click(); })()`);
+  await page.wait('rinkside.S.state.presets.length === 0');
+  check('a preset can be deleted', (await api('GET', '/state')).data.presets.length === 0);
+  await page.eval('document.querySelector("#scope-game").click()');
+
+  // -------------------------------------------------------------- automatic horizon
+  console.log('Automatic horizon');
+  await goTo('Z50II', 'DSC_0003');
+  // Where the dark crowd meets the white boards, near the left and right of the photo.
+  const boardLine = () =>
+    page.eval(`(() => {
+      const gl = document.querySelector('#gl');
+      const c = document.createElement('canvas'); c.width = gl.width; c.height = gl.height;
+      const g = c.getContext('2d'); g.drawImage(gl, 0, 0);
+      const d = rinkside.view;
+      const edge = (fx) => { const x = Math.round(d.x + d.w * fx); for (let y = Math.round(d.y + d.h * 0.1); y < d.y + d.h * 0.5; y++) { const p = g.getImageData(x, y, 1, 1).data; if (p[0] + p[1] + p[2] > 600) return y; } return -1; };
+      return { left: edge(0.2), right: edge(0.8) };
+    })()`);
+  const tilted = await boardLine();
+  await key('h');
+  await page.wait('rinkside.cur().crop?.angle');
+  const fixed = await page.eval('rinkside.cur().crop');
+  check('H finds the 2.5° tilt from the boards', Math.abs(fixed.angle - 2.5) <= 0.3 && fixed.ratio === 'level', fixed);
+  check('the straightened crop fits inside the photo (no empty corners)', Math.abs(fixed.w - 0.939) < 0.01 && Math.abs(fixed.h - 0.939) < 0.01, fixed);
+  await page.wait('rinkside.disp && rinkside.disp.id === rinkside.cur().id');
+  await sleep(300);
+  const level = await boardLine();
+  check('the photo on screen is now level', Math.abs(tilted.left - tilted.right) > 8 && Math.abs(level.left - level.right) <= 2, { tilted, level });
+  await page.eval('document.querySelector("#panel-tabs [data-tab=crop]").click()');
+  check('the Straighten slider shows the angle', (await page.eval('document.querySelector("#straighten-out").textContent')) === `+${fixed.angle.toFixed(1)}°`);
+  await page.eval(`(() => { const s = document.querySelector('#straighten'); s.value = '0'; s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change')); })()`);
+  await page.wait('rinkside.cur().crop === null');
+  check('Straighten back to 0 removes the automatic crop', true);
+
   console.log('Look and crop');
   await goTo('Z50II', 'DSC_0001');
   await key('W', { keyCode: 87, modifiers: 8 });
@@ -243,6 +331,12 @@ try {
   await sleep(800); // let the last saves land
   sess = (await api('GET', `/s/${sid}`)).data;
   check('picks, stars, players, look and crop are saved in Folio', sess.frames.filter((f) => f.flag === 1).length === 9 && byName('Z50II', 'DSC_0002').stars === 4 && byName('Z50II', 'DSC_0001').players === '23 a12' && byName('Z50II', 'DSC_0002').look?.exposure === 1 && byName('Z50II', 'DSC_0001').crop?.ratio === '4:5' && sess.look.temp > 10);
+
+  // A straightened pick, to check the export.
+  await goTo('Z50II', 'DSC_0007');
+  await page.eval(`(() => { const s = document.querySelector('#straighten'); s.value = '3'; s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change')); })()`);
+  await page.wait('rinkside.cur().crop?.angle === 3');
+  await sleep(400);
 
   // -------------------------------------------------------------- export (to a private browser folder)
   console.log('Export');
@@ -307,6 +401,8 @@ try {
   const bright = report.find((r) => r !== first && r.iptc['Caption-Abstract'].startsWith('Matti Virtanen (HIFK) and Joni Ikonen'));
   const other = report.find((r) => r.iptc['Caption-Abstract'].startsWith('During') && r.size[0] > r.size[1]);
   check('a +1 EV photo look exports brighter', bright && other && bright.mean[0] > other.mean[0] + 15, [bright?.mean, other?.mean]);
+  const z7 = report.find((r) => r.exif.DateTimeOriginal === '2026:10:29 18:45:12');
+  check('a straightened photo exports at its fitted size, upright', z7 && z7.size[0] === 1600 && Math.abs(z7.size[0] / z7.size[1] - 1.5) < 0.01 && z7.top_brightness < 90, z7 && [z7.size, z7.top_brightness]);
   check('NEF-only frame exports from its embedded preview', report.some((r) => r.iptc['Caption-Abstract'].startsWith('Joni Ikonen (Tappara) and Ville Varis') && r.size[0] === 1600));
   const originals = fs.readdirSync(path.join(outDir, 'Originals')).sort();
   check('originals copied with sidecars; DSC_0002 from both bodies kept apart', ['DSC_0002.JPG', 'DSC_0002.NEF', 'DSC_0002.xmp', 'DSC_0002_D3.JPG', 'DSC_0002_D3.NEF', 'DSC_0002_D3.xmp', 'DSC_0004.NEF', 'DSC_0004_D3.NEF'].every((f) => originals.includes(f)), originals);
