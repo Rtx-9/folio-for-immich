@@ -162,6 +162,12 @@ const server = http.createServer(async (req, res) => {
     const file = form.get('assetData');
     if (!file || !form.get('fileCreatedAt') || !form.get('fileModifiedAt')) return bad(res, 'assetData, fileCreatedAt and fileModifiedAt are required');
     if (Number.isNaN(Date.parse(form.get('fileCreatedAt')))) return bad(res, 'fileCreatedAt must be a Date instance');
+    // Like Immich's canUploadFile: each file is checked against body.filename if given, else its own name.
+    for (const [field, test] of [['assetData', /\.(jpe?g|nef|nrw|heic|png|tiff?|dng|webp)$/i], ['sidecarData', /\.xmp$/i]]) {
+      const f = form.get(field);
+      const checked = form.get('filename') || f?.name || '';
+      if (f && !test.test(checked)) return bad(res, `Unsupported file type ${checked}`);
+    }
     const data = Buffer.from(await file.arrayBuffer());
     const checksum = crypto.createHash('sha1').update(data).digest('base64');
     if (req.headers['x-immich-checksum'] && fromChecksum(req.headers['x-immich-checksum']) !== checksum) return bad(res, 'checksum mismatch');

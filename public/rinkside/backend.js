@@ -110,6 +110,9 @@ const isoWithZone = (t, tz) => `${new Date(t).toISOString().slice(0, 19)}${/^[+-
 // Make Immich match RinkSide. `fileFor(frame, kind)` gives the card File.
 // `status` is updated as it goes; progress is saved after every upload, so a
 // sync that stops halfway simply continues next time.
+// Uploads send no 'filename' field: Immich v3 checks every file of the request
+// (the .xmp sidecar too) against that name and would refuse the sidecar. The
+// name travels with the file itself.
 export async function runSync(sess, rosters, fileFor, status) {
   const opts = sess.sync.options;
   const sync = sess.sync;
@@ -168,7 +171,6 @@ export async function runSync(sess, rosters, fileFor, status) {
           const form = new FormData();
           form.set('fileCreatedAt', isoWithZone(it.frame.t, it.frame.tz));
           form.set('fileModifiedAt', new Date(it.info.mtime || Date.now()).toISOString());
-          form.set('filename', it.file.name);
           form.set('assetData', it.file, it.file.name);
           form.set('sidecarData', new Blob([xmpPacket(frameMeta(sess, it.frame, rosters), { sidecar: true })], { type: 'application/xml' }), `${it.file.name}.xmp`);
           const res = await immich('POST', '/assets', { form, headers: { 'x-immich-checksum': it.sum } });
@@ -329,7 +331,6 @@ export async function exportEdit(ctx, sess, f, rosters, { sig, name, render }) {
     const form = new FormData();
     form.set('fileCreatedAt', isoWithZone(f.t, f.tz));
     form.set('fileModifiedAt', new Date().toISOString());
-    form.set('filename', name);
     form.set('assetData', blob, name);
     form.set('sidecarData', new Blob([xmpPacket(meta, { sidecar: true })], { type: 'application/xml' }), `${name}.xmp`);
     id = (await immich('POST', '/assets', { form, headers: { 'x-immich-checksum': sum } })).id;
